@@ -54,8 +54,8 @@ from codec_resolve import (
 )
 ```
 
-### __main__.py (507 lines)
-CLI entry point. `python -m codec_resolve [options]`
+### __main__.py (499 lines)
+CLI entry point. `./codec-resolve [options]` or `python -m codec_resolve [options]`
 
 | Line | Symbol | Description |
 |------|--------|-------------|
@@ -76,7 +76,7 @@ python -m codec_resolve --codec hvc1 -r 4k --fps 30 -d 10 -c 420 -t pq -g bt2020
 python -m codec_resolve --decode "hvc1.2.4.L153.B0, dvh1.08.06" # HEVC+DV hybrid
 ```
 
-### models.py (283 lines)
+### models.py (284 lines)
 Shared data models and ITU-T H.273 color parameter tables.
 
 | Line | Symbol | Description |
@@ -447,4 +447,6 @@ db4h, db1p, db2g, cdm4, unknown, no brand, HEVC+brand, hybrid+brand
 | 6 | Decode test suite + roundtrips | ~5,000 | 79 |
 | 7 | HLS brands + package refactor | 5,648 | 96 |
 | 8 | AV1 + dav1 full integration | 6,993 | 118 |
-| **9** | **Phase 0 Audit: schema normalization, registry, dedup, structured notes** | **7,034** | **118** |
+| **9** | **v1.0.0: Phase 0 audit, schema normalization, registry, dedup, structured notes** | **7,034** | **118** |
+
+**v1.0.0 released 2026-02-23** — https://github.com/NoFear0411/codec-resolve
