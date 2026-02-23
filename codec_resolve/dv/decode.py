@@ -7,7 +7,7 @@ unified DV+HEVC format, and HLS SUPPLEMENTAL-CODECS with brand suffix.
 Source: ETSI TS 103 572, Dolby ISOBMFF Spec, RFC 8216bis.
 """
 from typing import Dict, Optional
-from ..hls import HLS_DV_BRANDS
+from ..hls import HLS_DV_BRANDS, strip_hls_brands
 from .levels import DV_LEVEL_LOOKUP
 from .profiles import DV_COMPAT, _dv_sub_key
 
@@ -87,31 +87,7 @@ def decode_dv(codec_string: str) -> dict:
     # ── HLS brand stripping (RFC 8216bis §4.4.6.2) ──
     # SUPPLEMENTAL-CODECS format: "codec_format/brand[/brand...]"
     # Strip brand suffix before dot-parsing, store for later validation
-    hls_brands = []
-    if "/" in codec_string:
-        slash_parts = codec_string.split("/")
-        codec_string = slash_parts[0]  # The actual codec format
-        for brand_str in slash_parts[1:]:
-            brand_str = brand_str.strip()
-            if brand_str:
-                brand_info = HLS_DV_BRANDS.get(brand_str.lower())
-                if brand_info:
-                    hls_brands.append({
-                        "brand": brand_str,
-                        "description": brand_info.description,
-                        "spec_owner": brand_info.spec_owner,
-                        "inferred_compat_id": brand_info.inferred_compat_id,
-                        "video_range": brand_info.video_range,
-                    })
-                else:
-                    hls_brands.append({
-                        "brand": brand_str,
-                        "description": f"Unknown brand '{brand_str}' "
-                                       f"(not in MP4RA registry)",
-                        "spec_owner": "Unknown",
-                        "inferred_compat_id": None,
-                        "video_range": None,
-                    })
+    codec_string, hls_brands, _unknown = strip_hls_brands(codec_string)
 
     parts = codec_string.split(".")
 
@@ -127,7 +103,8 @@ def decode_dv(codec_string: str) -> dict:
     dv_profile_str = parts[1]
     dv_level_str = parts[2]
 
-    result = {"codec_string": codec_string, "family": "Dolby Vision"}
+    findings = []
+    result = {"codec_string": codec_string, "family": "dv", "findings": findings}
 
     # Store HLS brand info if present
     if hls_brands:
@@ -188,8 +165,12 @@ def decode_dv(codec_string: str) -> dict:
         if profile_idc == 5:
             result["cross_compat"] = "NONE — IPTPQc2 closed-loop"
             result["colorspace"] = "IPTPQc2 (proprietary)"
-            result["warning"] = ("Standard HEVC decoders will produce "
-                                 "green/purple distortion. DV decoder required.")
+            findings.append({
+                "severity": "warning",
+                "code": "DV_PROPRIETARY_COLORSPACE",
+                "message": "Standard HEVC decoders will produce "
+                           "green/purple distortion. DV decoder required.",
+            })
         elif profile_idc == 7:
             result["cross_compat"] = ("HEVC Main 10 (BL only — hardware fallback). "
                                       "Full DV requires BL+EL dual decode")
@@ -209,10 +190,13 @@ def decode_dv(codec_string: str) -> dict:
     if not compat:
         compat = DV_COMPAT.get(str(profile_idc))
     if compat and dv_entry not in compat.entries:
-        result["entry_warning"] = (
-            f"Entry '{dv_entry}' is unexpected for Profile {profile_idc} "
-            f"({compat.base_codec} base). Expected: "
-            f"{', '.join(sorted(compat.entries))}")
+        findings.append({
+            "severity": "warning",
+            "code": "DV_ENTRY_MISMATCH",
+            "message": f"Entry '{dv_entry}' is unexpected for Profile {profile_idc} "
+                       f"({compat.base_codec} base). Expected: "
+                       f"{', '.join(sorted(compat.entries))}",
+        })
 
     # 3. Level
     level_id = int(dv_level_str)
@@ -320,7 +304,7 @@ def decode_dv(codec_string: str) -> dict:
             # Propagate embedded HEVC validation errors into the
             # unified verdict — if the base layer itself is invalid,
             # the unified string cannot be valid either.
-            hevc_findings = hevc_decoded.get("validation_findings", [])
+            hevc_findings = hevc_decoded.get("findings", [])
             for f in hevc_findings:
                 if f["severity"] == "error":
                     validation["issues"].append(
@@ -335,10 +319,17 @@ def decode_dv(codec_string: str) -> dict:
             result["embedded_hevc_error"] = str(e)
     elif len(parts) > 3:
         # Non-HEVC DV entry with extra parts — likely malformed
-        result["parse_warning"] = (
-            f"DV entry '{dv_entry}' has {len(parts)} components but "
-            f"only 3 expected. Extra parts ignored: "
-            f"{'.'.join(parts[3:])}")
+        findings.append({
+            "severity": "warning",
+            "code": "DV_EXTRA_PARTS",
+            "message": f"DV entry '{dv_entry}' has {len(parts)} components but "
+                       f"only 3 expected. Extra parts ignored: "
+                       f"{'.'.join(parts[3:])}",
+        })
+
+    # ── Verdict ────────────────────────────────────────────────────
+    has_errors = any(f["severity"] == "error" for f in findings)
+    result["verdict"] = "INVALID" if has_errors else "VALID"
 
     return result
 

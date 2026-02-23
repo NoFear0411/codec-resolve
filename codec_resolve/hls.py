@@ -41,6 +41,53 @@ class HLSBrand:
     dv_profiles: set               # DV profiles this brand applies to
 
 
+def strip_hls_brands(codec_string: str) -> tuple:
+    """Strip SUPPLEMENTAL-CODECS brand suffix from codec string.
+
+    Parses the slash-separated brand suffix per RFC 8216bis §4.4.6.2
+    and looks up each brand in the MP4RA registry.
+
+    Returns (clean_string, brands_list, unknown_brands) where:
+      clean_string: codec string without brand suffix
+      brands_list: list of dicts with brand info
+      unknown_brands: list of brand strings not in registry
+    """
+    if "/" not in codec_string:
+        return codec_string, [], []
+
+    slash_idx = codec_string.index("/")
+    clean = codec_string[:slash_idx]
+    brand_part = codec_string[slash_idx + 1:]
+
+    brands = []
+    unknown = []
+    for brand_str in brand_part.split("/"):
+        brand_str = brand_str.strip()
+        if not brand_str:
+            continue
+        info = HLS_DV_BRANDS.get(brand_str.lower())
+        if info:
+            brands.append({
+                "brand": brand_str,
+                "description": info.description,
+                "spec_owner": info.spec_owner,
+                "inferred_compat_id": info.inferred_compat_id,
+                "video_range": info.video_range,
+            })
+        else:
+            brands.append({
+                "brand": brand_str,
+                "description": f"Unknown brand '{brand_str}' "
+                               f"(not in MP4RA registry)",
+                "spec_owner": None,
+                "inferred_compat_id": None,
+                "video_range": None,
+            })
+            unknown.append(brand_str)
+
+    return clean, brands, unknown
+
+
 HLS_DV_BRANDS = {
     # ── Dolby Vision brands ──
     "db1p": HLSBrand(

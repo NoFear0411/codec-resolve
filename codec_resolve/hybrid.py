@@ -11,7 +11,8 @@ from .hls import HLS_DV_BRANDS
 from .hevc.levels import HEVC_LEVELS, HEVCLevel
 from .hevc.decode import decode_hevc, HEVC_LEVEL_LOOKUP
 from .dv.levels import DV_LEVEL_LOOKUP, DV_TO_HEVC_LEVEL_IDC, DV_TO_AV1_LEVEL_IDX, DVLevel
-from .dv.profiles import DV_COMPAT, DVCompat, _dv_sub_key
+from .dv.profiles import DV_COMPAT, DVCompat, _dv_sub_key, METADATA_DELIVERY
+from .registry import CODEC_ENTRIES
 from .dv.decode import decode_dv
 from .av1.decode import decode_av1
 from .av1.levels import AV1_LEVEL_LOOKUP
@@ -73,10 +74,10 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
         return result
 
     if compat.base_codec == "MV-HEVC":
-        result["notes"].append(
-            f"ℹ DV Profile {dv_idc} uses MV-HEVC (multiview) — "
+        result["notes"].append({"severity": "info", "message":
+            f"DV Profile {dv_idc} uses MV-HEVC (multiview) — "
             f"base HEVC string describes the primary view. "
-            f"Full stereoscopic decode requires MV-HEVC capability")
+            f"Full stereoscopic decode requires MV-HEVC capability"})
 
     # --- Profile 5: IPTPQc2 closed-loop warning ---
     # Profile 5 uses a proprietary colorspace. The HEVC base layer is
@@ -84,12 +85,12 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
     # produces green/purple distortion. This is informational; the
     # profile check below enforces the Main 10 requirement.
     if dv_idc == 5:
-        result["notes"].append(
-            f"⚠ DV Profile 5 uses proprietary IPTPQc2 colorspace — "
+        result["notes"].append({"severity": "warning", "message":
+            f"DV Profile 5 uses proprietary IPTPQc2 colorspace — "
             f"the HEVC base layer is NOT standard YCbCr. "
             f"Decoding as standard HEVC Main 10 will produce "
             f"green/purple color distortion. "
-            f"No standard HDR/SDR fallback is possible")
+            f"No standard HDR/SDR fallback is possible"})
 
     # --- Check HEVC profile ---
     if compat.hevc_profiles:
@@ -102,11 +103,11 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
                 f"({hevc_decoded.get('profile_name', '?')})")
             result["valid"] = False
         else:
-            result["notes"].append(
-                f"✓ HEVC profile {hevc_profile} "
+            result["notes"].append({"severity": "pass", "message":
+                f"HEVC profile {hevc_profile} "
                 f"({hevc_decoded.get('profile_name', '?')}) "
                 f"matches DV {compat.dv_sub} requirement "
-                f"({compat.base_label})")
+                f"({compat.base_label})"})
 
     # --- Check HEVC level vs DV level capacity (BIDIRECTIONAL) ---
     hevc_level_idc = hevc_decoded.get("level_idc", 0)
@@ -183,28 +184,28 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
         # generous than DV levels in samples/s for the same tier.
         elif hevc_lv.max_luma_sps > dv_pps * 2.0:
             hevc_tput = hevc_lv.max_luma_sps
-            result["notes"].append(
-                f"⚠ HEVC L{hevc_lv.number} throughput "
+            result["notes"].append({"severity": "warning", "message":
+                f"HEVC L{hevc_lv.number} throughput "
                 f"({hevc_tput:,.0f} samples/s) exceeds DV L"
                 f"{dv_level_id:02d} ({dv_pps:,.0f} samples/s) by "
                 f"{hevc_tput / dv_pps:.1f}×. DV RPU frame size is "
                 f"sufficient, but HEVC may deliver frames faster "
-                f"than the DV level's rated throughput")
+                f"than the DV level's rated throughput"})
 
         # CHECK 4: All good — levels match in both directions
         else:
             headroom = hevc_lv.max_luma_sps / dv_pps if dv_pps > 0 else 999
             if headroom > 1.5:
-                result["notes"].append(
-                    f"✓ HEVC L{hevc_lv.number} has headroom over DV L"
+                result["notes"].append({"severity": "pass", "message":
+                    f"HEVC L{hevc_lv.number} has headroom over DV L"
                     f"{dv_level_id:02d} — decoder supports up to "
                     f"{hevc_lv.max_luma_sps:,.0f} samples/s, "
                     f"DV content caps at {dv_pps:,.0f} "
-                    f"({headroom:.1f}× headroom)")
+                    f"({headroom:.1f}× headroom)"})
             else:
-                result["notes"].append(
-                    f"✓ HEVC L{hevc_lv.number} sufficient for DV L"
-                    f"{dv_level_id:02d} content")
+                result["notes"].append({"severity": "pass", "message":
+                    f"HEVC L{hevc_lv.number} sufficient for DV L"
+                    f"{dv_level_id:02d} content"})
 
     # --- DV Level → HEVC Level IDC direct mapping (FF-1) ---
     # Beyond throughput math, validate the STANDARD mapping.
@@ -229,9 +230,9 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
                 result["valid"] = False
             elif hevc_level_idc == expected_idc:
                 exp_name = f"L{expected_lv.number}" if expected_lv else f"IDC {expected_idc}"
-                result["notes"].append(
-                    f"✓ DV L{dv_level_id:02d} ↔ HEVC {exp_name}: "
-                    f"standard IDC mapping confirmed")
+                result["notes"].append({"severity": "pass", "message":
+                    f"DV L{dv_level_id:02d} ↔ HEVC {exp_name}: "
+                    f"standard IDC mapping confirmed"})
 
     # --- Bit depth from HEVC constraint flags ---
     si = hevc_decoded.get("stream_info", {})
@@ -260,27 +261,27 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
     # unsupported in consumer hardware.
     hevc_tier = hevc_decoded.get("tier_name", "Main")
     if hevc_tier == "High" and dv_idc in (5, 8, 9, 10, 20):
-        result["notes"].append(
-            f"⚠ DV Profile {dv_idc} is intended for consumer delivery. "
+        result["notes"].append({"severity": "warning", "message":
+            f"DV Profile {dv_idc} is intended for consumer delivery. "
             f"High Tier is widely unsupported on consumer DV hardware "
             f"(TVs, streaming devices, phones). "
-            f"Main Tier is recommended for DV delivery")
+            f"Main Tier is recommended for DV delivery"})
 
     # --- Layer structure info ---
     if compat.layer_structure == "BL+EL+RPU":
         if dv_idc == 7:
-            result["notes"].append(
+            result["notes"].append({"severity": "note", "message":
                 f"Dual-layer (BL+EL+RPU): 10-bit BL + 2-bit EL → "
                 f"12-bit reconstructed. Requires two HEVC decode paths. "
-                f"BL alone is valid {compat.fallback_format or 'HDR10'}")
+                f"BL alone is valid {compat.fallback_format or 'HDR10'}"})
         else:
-            result["notes"].append(
-                f"⚠ DV {compat.dv_sub} is {compat.layer_structure} — "
-                f"requires DV-capable decoder")
+            result["notes"].append({"severity": "warning", "message":
+                f"DV {compat.dv_sub} is {compat.layer_structure} — "
+                f"requires DV-capable decoder"})
     elif compat.fallback_format:
-        result["notes"].append(
+        result["notes"].append({"severity": "note", "message":
             f"Single-layer + RPU: non-DV players decode BL as "
-            f"{compat.fallback_format}")
+            f"{compat.fallback_format}"})
 
     # --- EL/INBLD Cross-Validation ──────────────────────────────
     # When a DV profile uses an Enhancement Layer (EL), the HEVC
@@ -311,22 +312,22 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
             result["valid"] = False
         else:
             # Byte 1 not present — can't verify INBLD
-            result["notes"].append(
-                f"⚠ DV {compat.dv_sub} uses {compat.layer_structure} "
+            result["notes"].append({"severity": "warning", "message":
+                f"DV {compat.dv_sub} uses {compat.layer_structure} "
                 f"(Enhancement Layer present), but HEVC constraint "
                 f"string has only {n_cbytes} byte(s) — cannot verify "
                 f"INBLD flag. For strict compliance, Byte 1 should "
-                f"include INBLD (0x20) for dual-layer decode")
+                f"include INBLD (0x20) for dual-layer decode"})
     elif has_el and inbld:
-        result["notes"].append(
-            f"✓ INBLD flag set — dual-pipe decode enabled "
-            f"for {compat.layer_structure}")
+        result["notes"].append({"severity": "pass", "message":
+            f"INBLD flag set — dual-pipe decode enabled "
+            f"for {compat.layer_structure}"})
     elif not has_el and inbld:
-        result["notes"].append(
-            f"⚠ INBLD flag is set but DV {compat.dv_sub} is "
+        result["notes"].append({"severity": "warning", "message":
+            f"INBLD flag is set but DV {compat.dv_sub} is "
             f"single-layer (no EL). INBLD is unnecessary and "
             f"may cause some decoders to stall waiting for a "
-            f"non-existent Enhancement Layer")
+            f"non-existent Enhancement Layer"})
 
     # --- HEVC tier vs DV bitrate cap ---
     hevc_tier = hevc_decoded.get("tier_name", "Main")
@@ -336,10 +337,10 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
         dv_max_br = (dv_lv.max_br_high if dv_lv.max_br_high > 0
                      else dv_lv.max_br_main)
         if dv_max_br > hevc_max_br:
-            result["notes"].append(
-                f"ℹ DV L{dv_level_id:02d} allows up to "
+            result["notes"].append({"severity": "info", "message":
+                f"DV L{dv_level_id:02d} allows up to "
                 f"{dv_max_br:,} kbps but HEVC {hevc_tier} tier caps at "
-                f"{hevc_max_br:,} kbps — HEVC tier is the bottleneck")
+                f"{hevc_max_br:,} kbps — HEVC tier is the bottleneck"})
 
         # --- RPU overhead safety margin (MF-2) ---
         # Dolby Vision adds a Reference Processing Unit (RPU) metadata
@@ -354,23 +355,18 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
         # drop frames or stutter.
         rpu_margin = 500  # kbps safe margin for RPU overhead
         safe_ceiling = hevc_max_br - rpu_margin
-        result["notes"].append(
-            f"ℹ RPU overhead: DV metadata adds ~50-250 kbps. "
+        result["notes"].append({"severity": "info", "message":
+            f"RPU overhead: DV metadata adds ~50-250 kbps. "
             f"Safe video bitrate ceiling for HEVC L{hevc_lv.number} "
             f"{hevc_tier} tier: ≤{safe_ceiling:,} kbps "
-            f"(level max {hevc_max_br:,} minus ~{rpu_margin} RPU margin)")
+            f"(level max {hevc_max_br:,} minus ~{rpu_margin} RPU margin)"})
         result["rpu_safe_ceiling_kbps"] = safe_ceiling
 
     # --- Metadata delivery check ---
     dv_entry = dv_decoded.get("entry", "")
     if dv_entry in compat.entries:
-        delivery = {"dvh1": "out-of-band (sample description — HLS/MP4)",
-                     "dvhe": "in-band (NAL units — DASH/TS)",
-                     "dva1": "out-of-band (sample description — HLS/MP4)",
-                     "dvav": "in-band (NAL units)",
-                     "dav1": "out-of-band (sample description)"}
-        result["notes"].append(
-            f"Metadata delivery: {delivery.get(dv_entry, dv_entry)}")
+        result["notes"].append({"severity": "note", "message":
+            f"Metadata delivery: {METADATA_DELIVERY.get(dv_entry, dv_entry)}"})
     else:
         result["issues"].append(
             f"Entry '{dv_entry}' is not valid for DV Profile {dv_idc}. "
@@ -407,9 +403,9 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
 
     if sync_ok is True:
         oob = "out-of-band" if hevc_entry == "hvc1" else "in-band"
-        result["notes"].append(
-            f"✓ Entry sync: {hevc_entry}+{dv_entry} — "
-            f"both {oob} (consistent delivery)")
+        result["notes"].append({"severity": "pass", "message":
+            f"Entry sync: {hevc_entry}+{dv_entry} — "
+            f"both {oob} (consistent delivery)"})
     elif sync_ok is False:
         hevc_mode = ("out-of-band" if hevc_entry == "hvc1"
                      else "in-band")
@@ -417,14 +413,14 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
                    else "in-band")
         # Determine correct pairing
         expected_dv = "dvhe" if hevc_entry == "hvc1" else "dvh1"
-        result["notes"].append(
-            f"⚠ Entry mismatch: {hevc_entry} ({hevc_mode}) + "
+        result["notes"].append({"severity": "warning", "message":
+            f"Entry mismatch: {hevc_entry} ({hevc_mode}) + "
             f"{dv_entry} ({dv_mode}). HEVC and DV parameter delivery "
             f"methods should match. Expected: "
             f"{hevc_entry}+{expected_dv}. Hardware decoders (LG C4, "
-            f"Apple TV) may fail to initialize the HDR pipeline")
+            f"Apple TV) may fail to initialize the HDR pipeline"})
 
-    result["notes"].append(compat.note)
+    result["notes"].append({"severity": "note", "message": compat.note})
 
     # --- HLS Brand Cross-Validation (RFC 8216bis §4.4.6.2) ---
     # If the DV decoded result contains HLS brands, validate them
@@ -461,18 +457,18 @@ def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
                         result["valid"] = False
 
                     # Report the brand's role in the binding
-                    result["notes"].append(
-                        f"ℹ HLS brand '{bi['brand']}': {brand_def.description}. "
+                    result["notes"].append({"severity": "info", "message":
+                        f"HLS brand '{bi['brand']}': {brand_def.description}. "
                         f"Fallback: strip RPU → "
                         f"{'PQ/HDR10' if brand_def.inferred_compat_id == 1 else ''}"
                         f"{'SDR BT.709' if brand_def.inferred_compat_id == 2 else ''}"
                         f"{'HLG BT.2020' if brand_def.inferred_compat_id == 4 else ''}"
-                        f" playback")
+                        f" playback"})
             else:
                 # Unknown brand — informational
-                result["notes"].append(
-                    f"ℹ HLS brand '{bi['brand']}' not in validator's "
-                    f"MP4RA brand registry — cannot cross-validate")
+                result["notes"].append({"severity": "info", "message":
+                    f"HLS brand '{bi['brand']}' not in validator's "
+                    f"MP4RA brand registry — cannot cross-validate"})
 
     return result
 
@@ -555,8 +551,8 @@ def validate_av1_hybrid(av1_decoded: dict, dv_decoded: dict) -> dict:
         result["valid"] = False
         return result
 
-    result["notes"].append(
-        f"✓ DV Profile {dv_idc} correctly uses AV1 base layer")
+    result["notes"].append({"severity": "pass", "message":
+        f"DV Profile {dv_idc} correctly uses AV1 base layer"})
 
     # ── CHECK A2: AV1 profile contract ──────────────────────────────
     # DV P10 requires AV1 Profile 0 (Main), 10-bit, non-monochrome
@@ -570,8 +566,8 @@ def validate_av1_hybrid(av1_decoded: dict, dv_decoded: dict) -> dict:
             f"got Profile {av1_profile} ({av1_decoded.get('profile_name', '?')})")
         result["valid"] = False
     else:
-        result["notes"].append(
-            f"✓ AV1 Profile {av1_profile} (Main) matches DV Profile 10 requirement")
+        result["notes"].append({"severity": "pass", "message":
+            f"AV1 Profile {av1_profile} (Main) matches DV Profile 10 requirement"})
 
     if av1_depth is not None and av1_depth != 10:
         result["issues"].append(
@@ -579,7 +575,8 @@ def validate_av1_hybrid(av1_decoded: dict, dv_decoded: dict) -> dict:
             f"got {av1_depth}-bit")
         result["valid"] = False
     else:
-        result["notes"].append(f"✓ AV1 bit depth: {av1_depth}-bit (correct for DV P10)")
+        result["notes"].append({"severity": "pass", "message":
+            f"AV1 bit depth: {av1_depth}-bit (correct for DV P10)"})
 
     if av1_mono:
         result["issues"].append(
@@ -611,16 +608,16 @@ def validate_av1_hybrid(av1_decoded: dict, dv_decoded: dict) -> dict:
                 result["valid"] = False
             elif av1_level_idx == expected_idx:
                 exp_name = expected_lv.name if expected_lv else f"idx {expected_idx}"
-                result["notes"].append(
-                    f"✓ DV L{dv_level_id:02d} ↔ AV1 L{exp_name}: "
-                    f"standard level mapping confirmed")
+                result["notes"].append({"severity": "pass", "message":
+                    f"DV L{dv_level_id:02d} ↔ AV1 L{exp_name}: "
+                    f"standard level mapping confirmed"})
             else:
                 # Higher AV1 level than minimum — report headroom
                 exp_name = expected_lv.name if expected_lv else f"idx {expected_idx}"
                 curr_name = av1_lv.name if av1_lv else f"idx {av1_level_idx}"
-                result["notes"].append(
-                    f"✓ AV1 Level {curr_name} exceeds DV L{dv_level_id:02d} "
-                    f"minimum (AV1 L{exp_name}) — headroom available")
+                result["notes"].append({"severity": "pass", "message":
+                    f"AV1 Level {curr_name} exceeds DV L{dv_level_id:02d} "
+                    f"minimum (AV1 L{exp_name}) — headroom available"})
 
     # ── CHECK A4: Color consistency ─────────────────────────────────
     if av1_decoded.get("has_optional_fields"):
@@ -633,20 +630,20 @@ def validate_av1_hybrid(av1_decoded: dict, dv_decoded: dict) -> dict:
             brand_def = HLS_DV_BRANDS.get(brand_code)
             if brand_def and brand_def.video_range:
                 if brand_def.video_range == "HLG" and tc != 18:
-                    result["notes"].append(
-                        f"⚠ HLS brand '{brand_code}' implies HLG content, "
+                    result["notes"].append({"severity": "warning", "message":
+                        f"HLS brand '{brand_code}' implies HLG content, "
                         f"but AV1 transfer_characteristics={tc} "
-                        f"(expected 18 for HLG)")
+                        f"(expected 18 for HLG)"})
                 elif brand_def.video_range == "PQ" and tc != 16:
-                    result["notes"].append(
-                        f"⚠ HLS brand '{brand_code}' implies PQ content, "
+                    result["notes"].append({"severity": "warning", "message":
+                        f"HLS brand '{brand_code}' implies PQ content, "
                         f"but AV1 transfer_characteristics={tc} "
-                        f"(expected 16 for PQ)")
+                        f"(expected 16 for PQ)"})
                 elif brand_def.video_range == "SDR" and tc not in (1, 6, 13):
-                    result["notes"].append(
-                        f"⚠ HLS brand '{brand_code}' implies SDR content, "
+                    result["notes"].append({"severity": "warning", "message":
+                        f"HLS brand '{brand_code}' implies SDR content, "
                         f"but AV1 transfer_characteristics={tc} "
-                        f"(expected 1/6/13 for SDR)")
+                        f"(expected 1/6/13 for SDR)"})
 
     # ── CHECK A5: Brand ↔ profile validation ────────────────────────
     dv_brands = dv_decoded.get("hls_brands", [])
@@ -663,8 +660,8 @@ def validate_av1_hybrid(av1_decoded: dict, dv_decoded: dict) -> dict:
                         f"{', '.join(str(p) for p in sorted(brand_def.dv_profiles))}")
                     result["valid"] = False
                 else:
-                    result["notes"].append(
-                        f"ℹ HLS brand '{brand_code}': {brand_def.description}")
+                    result["notes"].append({"severity": "info", "message":
+                        f"HLS brand '{brand_code}': {brand_def.description}"})
 
     # ── CHECK A6: Entry sync ────────────────────────────────────────
     dv_entry = dv_decoded.get("entry", "")
@@ -674,10 +671,10 @@ def validate_av1_hybrid(av1_decoded: dict, dv_decoded: dict) -> dict:
             f"(dvh1/dvhe are HEVC entries, not AV1)")
         result["valid"] = False
     else:
-        result["notes"].append(
-            f"✓ Entry sync: av01+dav1 — both AV1-based (correct)")
-        result["notes"].append(
-            "Metadata delivery: out-of-band (sample description)")
+        result["notes"].append({"severity": "pass", "message":
+            f"Entry sync: av01+dav1 — both AV1-based (correct)"})
+        result["notes"].append({"severity": "note", "message":
+            "Metadata delivery: out-of-band (sample description)"})
 
     # ── CHECK A7: Tier bitrate ──────────────────────────────────────
     av1_tier = av1_decoded.get("tier", 0)
@@ -692,28 +689,28 @@ def validate_av1_hybrid(av1_decoded: dict, dv_decoded: dict) -> dict:
         dv_max_br_mbps = dv_max_br_kbps / 1000.0
 
         if dv_max_br_mbps > av1_max_br_mbps:
-            result["notes"].append(
-                f"ℹ DV L{dv_level_id:02d} allows up to "
+            result["notes"].append({"severity": "info", "message":
+                f"DV L{dv_level_id:02d} allows up to "
                 f"{dv_max_br_mbps:.1f} Mbps but AV1 "
                 f"{'Main' if av1_tier == 0 else 'High'} tier caps at "
-                f"{av1_max_br_mbps:.1f} Mbps — AV1 tier is the bottleneck")
+                f"{av1_max_br_mbps:.1f} Mbps — AV1 tier is the bottleneck"})
 
         # RPU overhead margin
         rpu_margin_mbps = 0.5
         safe_ceiling = av1_max_br_mbps - rpu_margin_mbps
-        result["notes"].append(
-            f"ℹ RPU overhead: DV metadata adds ~0.05-0.25 Mbps. "
+        result["notes"].append({"severity": "info", "message":
+            f"RPU overhead: DV metadata adds ~0.05-0.25 Mbps. "
             f"Safe video bitrate ceiling: ≤{safe_ceiling:.1f} Mbps "
-            f"(AV1 cap {av1_max_br_mbps:.1f} minus ~{rpu_margin_mbps} RPU margin)")
+            f"(AV1 cap {av1_max_br_mbps:.1f} minus ~{rpu_margin_mbps} RPU margin)"})
         result["rpu_safe_ceiling_mbps"] = safe_ceiling
 
     # Layer structure info
     if compat.fallback_format:
-        result["notes"].append(
+        result["notes"].append({"severity": "note", "message":
             f"Single-layer + RPU: non-DV players decode BL as "
-            f"{compat.fallback_format}")
+            f"{compat.fallback_format}"})
 
-    result["notes"].append(compat.note)
+    result["notes"].append({"severity": "note", "message": compat.note})
 
     return result
 
@@ -726,16 +723,19 @@ def decode_codec_string(codec_string: str) -> dict:
     base = s.split("/")[0] if "/" in s else s
     entry = base.split(".")[0].lower()
 
-    if entry in ("hvc1", "hev1"):
-        return decode_hevc(s)
-    elif entry == "av01":
-        return decode_av1(s)
-    elif entry in ("dvhe", "dvh1", "dva1", "dvav", "dav1"):
-        return decode_dv(s)
-    else:
+    info = CODEC_ENTRIES.get(entry)
+    if not info:
         raise ValueError(
             f"Cannot identify codec family from entry '{entry}'. "
-            f"Expected: hvc1, hev1, av01, dvhe, dvh1, dva1, dvav, dav1")
+            f"Expected: {', '.join(sorted(CODEC_ENTRIES.keys()))}")
+
+    family = info["family"]
+    if family == "hevc":
+        return decode_hevc(s)
+    elif family == "av1":
+        return decode_av1(s)
+    elif family == "dv":
+        return decode_dv(s)
 
 
 def decode_hybrid_string(hybrid_string: str) -> dict:
@@ -763,20 +763,22 @@ def decode_hybrid_string(hybrid_string: str) -> dict:
     for p in parts:
         base = p.split("/")[0] if "/" in p else p
         entry = base.split(".")[0].lower()
-        if entry in ("hvc1", "hev1"):
+        info = CODEC_ENTRIES.get(entry)
+        if not info:
+            raise ValueError(f"Unknown entry '{entry}' in hybrid string")
+        family = info["family"]
+        if family == "hevc":
             if hevc_part:
                 raise ValueError(f"Multiple HEVC entries: '{hevc_part}' and '{p}'")
             hevc_part = p
-        elif entry == "av01":
+        elif family == "av1":
             if av1_part:
                 raise ValueError(f"Multiple AV1 entries: '{av1_part}' and '{p}'")
             av1_part = p
-        elif entry in ("dvhe", "dvh1", "dva1", "dvav", "dav1"):
+        elif family == "dv":
             if dv_part:
                 raise ValueError(f"Multiple DV entries: '{dv_part}' and '{p}'")
             dv_part = p
-        else:
-            raise ValueError(f"Unknown entry '{entry}' in hybrid string")
 
     if not dv_part:
         raise ValueError(

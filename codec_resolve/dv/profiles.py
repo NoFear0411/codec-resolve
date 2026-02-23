@@ -180,6 +180,15 @@ DV_COMPAT = {
 
 
 
+METADATA_DELIVERY = {
+    "dvh1": "out-of-band (sample description — HLS/MP4)",
+    "dvhe": "in-band (NAL units — DASH/TS)",
+    "dva1": "out-of-band (sample description — HLS/MP4)",
+    "dvav": "in-band (NAL units)",
+    "dav1": "out-of-band (sample description)",
+}
+
+
 def _dv_sub_key(dv_profile_idc: int, bl_compat_id=None) -> str:
     """Map DV profile + bl_compat_id to compatibility lookup key.
 

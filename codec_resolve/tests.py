@@ -386,7 +386,7 @@ def decode_self_test() -> bool:
             ("rext_sub_profile", "Main 4:2:2 10"),
         ]),
         ("dvh1.08.06", [
-            ("family", "Dolby Vision"),
+            ("family", "dv"),
             ("profile_idc", 8),
             ("level_id", 6),
             ("level_max_width", 3840),
@@ -455,7 +455,7 @@ def decode_self_test() -> bool:
         # --- DV Profile decode tests (corrected contracts) ---
         # Profile 9: AVC base
         ("dvav.09.05", [
-            ("family", "Dolby Vision"),
+            ("family", "dv"),
             ("base_layer_codec", "AVC"),
             ("profile_idc", 9),
             ("level_id", 5),
@@ -463,7 +463,7 @@ def decode_self_test() -> bool:
         ]),
         # Profile 10: AV1 base (NOT HEVC)
         ("dav1.10.09", [
-            ("family", "Dolby Vision"),
+            ("family", "dv"),
             ("base_layer_codec", "AV1"),
             ("profile_idc", 10),
             ("level_id", 9),
@@ -471,13 +471,13 @@ def decode_self_test() -> bool:
         ]),
         # Profile 20: MV-HEVC spatial
         ("dvh1.20.09", [
-            ("family", "Dolby Vision"),
+            ("family", "dv"),
             ("profile_idc", 20),
             ("level_id", 9),
         ]),
         # Profile 7: Dual-layer with layer detail
         ("dvhe.07.06", [
-            ("family", "Dolby Vision"),
+            ("family", "dv"),
             ("profile_idc", 7),
             ("enhancement_layer", True),
             ("layer_detail", "10-bit BL + 2-bit EL → 12-bit reconstructed"),
@@ -712,7 +712,7 @@ def decode_self_test() -> bool:
             actual_compat = d.get("bl_compat_id")
 
             # For non-DV (HEVC), bl_compat_id doesn't apply
-            if d["family"] == "HEVC":
+            if d["family"] == "hevc":
                 actual_compat = None
 
             if actual_brand == exp_brand and actual_compat == exp_compat:

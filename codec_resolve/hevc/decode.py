@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 from ..models import Chroma
 from .levels import HEVCLevel, HEVC_LEVELS
 from .profiles import HEVC_PROFILE_DEFS
-from ..hls import HLS_DV_BRANDS
+from ..hls import strip_hls_brands
 
 
 HEVC_PROFILE_NAMES = {
@@ -1043,28 +1043,7 @@ def decode_hevc(codec_string: str) -> dict:
     The brand is stripped before parsing and stored as metadata.
     """
     # ── HLS brand stripping ──
-    hls_brands = []
-    if "/" in codec_string:
-        slash_parts = codec_string.split("/")
-        codec_string = slash_parts[0]
-        for brand_str in slash_parts[1:]:
-            brand_str = brand_str.strip()
-            if brand_str:
-                brand_info = HLS_DV_BRANDS.get(brand_str.lower())
-                if brand_info:
-                    hls_brands.append({
-                        "brand": brand_str,
-                        "description": brand_info.description,
-                        "spec_owner": brand_info.spec_owner,
-                        "video_range": brand_info.video_range,
-                    })
-                else:
-                    hls_brands.append({
-                        "brand": brand_str,
-                        "description": f"Unknown brand '{brand_str}'",
-                        "spec_owner": "Unknown",
-                        "video_range": None,
-                    })
+    codec_string, hls_brands, _unknown = strip_hls_brands(codec_string)
 
     parts = codec_string.split(".")
     if len(parts) < 4:
@@ -1073,7 +1052,7 @@ def decode_hevc(codec_string: str) -> dict:
             f"Expected at least 4 dot-separated components: "
             f"<entry>.<profile>.<compat>.<tier+level>[.<constraints>...]")
 
-    result = {"codec_string": codec_string, "family": "HEVC"}
+    result = {"codec_string": codec_string, "family": "hevc"}
 
     # Store HLS brand info if present
     if hls_brands:
@@ -1565,7 +1544,7 @@ def decode_hevc(codec_string: str) -> dict:
         # Main/Main 10 — they cannot decode RExt streams even if
         # the codec string is technically valid.
         if rext_factor > 1.0 or chroma_factor > 1.0 or depth_factor > 1.0:
-            result.setdefault("validation_findings", []).append({
+            result.setdefault("findings", []).append({
                 "severity": "warning",
                 "code": "REXT_CONSUMER_UNSUPPORTED",
                 "message": (
@@ -1586,8 +1565,8 @@ def decode_hevc(codec_string: str) -> dict:
     # contradictions, unexpected configurations, and workflow hints.
     findings = _validate_constraint_context(result)
     if findings:
-        existing = result.get("validation_findings", [])
-        result["validation_findings"] = findings + existing
+        existing = result.get("findings", [])
+        result["findings"] = findings + existing
 
     # ── Profile Override Annotation ──
     # When Profile 1/2/3 has impossible constraint claims, the stream_info
@@ -1603,6 +1582,11 @@ def decode_hevc(codec_string: str) -> dict:
                             "ignored by hardware)")
     # Clean up internal flag
     result.pop("_profile_overrides_constraints", None)
+
+    # ── Verdict ────────────────────────────────────────────────────
+    all_findings = result.get("findings", [])
+    has_errors = any(f["severity"] == "error" for f in all_findings)
+    result["verdict"] = "INVALID" if has_errors else "VALID"
 
     return result
 

@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """
-Launcher for codec_resolve.
+Standalone launcher for codec_resolve.
 
-Place this file NEXT TO the codec_resolve/ directory and run:
-    python run.py [options]
-
-Or use the module form directly:
+Usage:
+    ./codec-resolve [options]
     python -m codec_resolve [options]
-
-Both do the same thing.
 """
 import runpy
 import sys

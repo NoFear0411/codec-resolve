@@ -1,5 +1,5 @@
 # CODEMAP.md — codec_resolve Package Reference
-## 6,993 lines · 118 tests · zero dependencies
+## 7,034 lines · 118 tests · zero dependencies
 ### Bidirectional: resolve ↔ decode ↔ validate ↔ hybrid
 ### Codec families: HEVC · AV1 · Dolby Vision (Profiles 5/7/8/9/10/20)
 
@@ -8,30 +8,31 @@
 ## Package Structure
 
 ```
-codec_resolve/                    6,993 lines total
+codec_resolve/                    7,034 lines total
 ├── __init__.py          39       Public API re-exports
-├── __main__.py         507       CLI: argparse, dispatch, help
-├── models.py           283       Shared enums + dataclasses + H.273 color tables
-├── hls.py               79       HLS brand registry (db1p, db4h, db2g, cdm4)
-├── resolve.py          225       Master resolver (HEVC + AV1 + DV)
-├── hybrid.py           815       Cross-validation + routing
-├── display.py          601       Pretty-printers (standalone + hybrid)
+├── __main__.py         499       CLI: argparse, dispatch, help
+├── models.py           284       Shared enums + dataclasses + H.273 color tables
+├── registry.py          30       Codec entry point registry (FourCC → family)
+├── hls.py              127       HLS brand registry + strip_hls_brands()
+├── resolve.py          220       Master resolver (HEVC + AV1 + DV)
+├── hybrid.py           817       Cross-validation + routing (structured notes)
+├── display.py          613       Pretty-printers (standalone + hybrid)
 ├── tests.py            887       118 tests
 ├── hevc/
 │   ├── __init__.py       1
 │   ├── profiles.py     353       13 HEVC profiles + constraint byte engine
 │   ├── levels.py       113       HEVC level table (1.0–6.2)
-│   └── decode.py     1,608       Full HEVC decoder + 14 semantic checks
+│   └── decode.py     1,592       Full HEVC decoder + 14 semantic checks
 ├── av1/
 │   ├── __init__.py       0
 │   ├── profiles.py     127       3 AV1 profiles + resolver + string formatter
 │   ├── levels.py        98       14 AV1 levels (2.0–6.3) + tier rules
-│   └── decode.py       431       AV1 codec string parser + 9 validation checks
+│   └── decode.py       408       AV1 codec string parser + 9 validation checks
 └── dv/
     ├── __init__.py       1
-    ├── profiles.py     336       10 DV compat entries (P5/7/8.1/8.2/8.4/8/9/10/20)
+    ├── profiles.py     345       10 DV compat entries + METADATA_DELIVERY
     ├── levels.py       145       DV level table + HEVC mapping + AV1 mapping
-    └── decode.py       344       DV decoder (triplet/unified/brand)
+    └── decode.py       335       DV decoder (triplet/unified/brand)
 ```
 
 **Architecture rule:** `hevc/`, `dv/`, and `av1/` are SIBLINGS — they never import each other.
@@ -98,35 +99,60 @@ Shared data models and ITU-T H.273 color parameter tables.
 | 272 | `GAMUT_TO_CP` | Gamut enum → expected cp value mapping |
 | 278 | `CP_TO_MC` | Color primaries → default matrix coefficients mapping |
 
-### hls.py (79 lines)
-HLS SUPPLEMENTAL-CODECS brand registry.
+### registry.py (30 lines)
+Codec entry point registry — single source of truth for FourCC → family dispatch.
 
-| Line | Brand | Meaning |
-|------|-------|---------|
-| 26 | `db1p` | DV cross-compatible with HDR10 (PQ) |
-| 32 | `db2g` | DV cross-compatible with HLG (VUI=18) |
-| 38 | `db4h` | DV cross-compatible with HLG (VUI=14) |
-| 44 | `cdm4` | HDR10+ (SMPTE 2094-40) |
+| Line | Symbol | Description |
+|------|--------|-------------|
+| 3 | `CODEC_ENTRIES` | Dict: 8 FourCC entries → {family, base_codec, is_dv} |
+| 14 | `ENTRY_ALIASES` | Dict: 6 alias groups (hevc, av1, dv, dv-avc, dv-av1, all) |
+| 23 | `ALL_ENTRIES` | Set of all valid entry points |
 
-### resolve.py (225 lines)
-Master forward resolver: Content → codec string(s).
+**CODEC_ENTRIES:**
+| Entry | Family | Base Codec | DV? |
+|-------|--------|------------|-----|
+| hvc1, hev1 | hevc | HEVC | No |
+| av01 | av1 | AV1 | No |
+| dvhe, dvh1 | dv | HEVC | Yes |
+| dvav, dva1 | dv | AVC | Yes |
+| dav1 | dv | AV1 | Yes |
+
+### hls.py (127 lines)
+HLS SUPPLEMENTAL-CODECS brand registry + shared brand stripping.
+
+| Line | Symbol | Description |
+|------|--------|-------------|
+| 10 | `strip_hls_brands(s)` | Strip `/brand` suffix → (clean_string, brands_list, unknown_brands) |
+| 49 | `HlsDvBrand` | NamedTuple: description, dv_profiles, spec_owner, inferred_compat_id, video_range |
+| 55 | `HLS_DV_BRANDS` | Dict: 4 brands (db1p, db2g, db4h, cdm4) |
+
+| Brand | Meaning | compat_id | video_range |
+|-------|---------|-----------|-------------|
+| `db1p` | DV cross-compatible with HDR10 (PQ) | 1 | PQ |
+| `db2g` | DV cross-compatible with SDR (BT.709) | 2 | SDR |
+| `db4h` | DV cross-compatible with HLG (BT.2100) | 4 | HLG |
+| `cdm4` | HDR10+ (SMPTE 2094-40) | — | PQ |
+
+### resolve.py (220 lines)
+Master forward resolver: Content → codec string(s). Uses `METADATA_DELIVERY` from dv/profiles.py.
 
 | Line | Symbol | Description |
 |------|--------|-------------|
 | 10 | `resolve(content, codecs)` | Main entry: dispatches to _resolve_hevc, _resolve_dv, _resolve_av1 |
 | 33 | route `av01` | → `_resolve_av1(content, "av01")` |
 | 48 | `_resolve_hevc(c, entry)` | HEVC forward resolve |
-| 102 | `_resolve_dv(c, entry)` | DV forward resolve |
-| 163 | `_resolve_av1(c, entry)` | AV1 forward resolve: profile selection → level → tier → color mapping → format_av1_string() |
+| 102 | `_resolve_dv(c, entry)` | DV forward resolve (uses METADATA_DELIVERY) |
+| 158 | `_resolve_av1(c, entry)` | AV1 forward resolve: profile → level → tier → color → format_av1_string() |
 
-### hybrid.py (815 lines)
-Cross-validation engine + codec string routing.
+### hybrid.py (817 lines)
+Cross-validation engine + codec string routing. Uses `CODEC_ENTRIES` from registry.py.
+Notes are structured dicts: `{"severity": "pass"|"warning"|"info"|"note", "message": ...}`.
 
 | Line | Symbol | Description |
 |------|--------|-------------|
-| 22 | `validate_hybrid(hevc, dv)` | HEVC+DV cross-validation (22+ checks) |
-| 516 | `validate_av1_hybrid(av1, dv)` | AV1+DV cross-validation (7 checks) |
-| 722 | `decode_codec_string(s)` | Auto-detect family (hvc1/hev1/av01/dv*) → decode |
+| 21 | `validate_hybrid(hevc, dv)` | HEVC+DV cross-validation (22+ checks, structured notes) |
+| 512 | `validate_av1_hybrid(av1, dv)` | AV1+DV cross-validation (7 checks, structured notes) |
+| 718 | `decode_codec_string(s)` | Auto-detect family via CODEC_ENTRIES → decode |
 | 740 | `decode_hybrid_string(s)` | Parse "base, dv" pair → decode both → cross-validate |
 
 **AV1+DV hybrid checks (validate_av1_hybrid):**
@@ -151,15 +177,17 @@ Cross-validation engine + codec string routing.
 | H6 | Entry sync — dvh1/dvhe=HEVC, dav1=AV1, dvav/dva1=AVC |
 | H7+ | Tier bitrate, fallback, metadata delivery, layer structure |
 
-### display.py (601 lines)
-Pretty-printers for all output types.
+### display.py (613 lines)
+Pretty-printers for all output types. Owns emoji prefix mapping for structured notes via `_NOTE_PREFIX`.
 
 | Line | Symbol | Description |
 |------|--------|-------------|
 | 8 | `print_results(content, results)` | Forward-resolve output with optional DV cross-validation |
-| 85 | `print_bare(results)` | Minimal output (--bare flag) |
-| 101 | `print_hybrid(result)` | Hybrid display — handles BOTH HEVC+DV and AV1+DV |
-| 237 | `print_decoded(d)` | Standalone decode display — HEVC, AV1, or DV family |
+| 86 | `print_bare(results)` | Minimal output (--bare flag) |
+| 102 | `print_hybrid(result)` | Hybrid display — handles BOTH HEVC+DV and AV1+DV |
+| 250 | `print_decoded(d)` | Standalone decode display — HEVC, AV1, or DV family |
+
+Note rendering: `_NOTE_PREFIX = {"pass": "✓ ", "warning": "⚠ ", "info": "ℹ ", "note": ""}`
 
 AV1 standalone display format:
 ```
@@ -189,7 +217,7 @@ AV1+DV hybrid display format:
 
 ---
 
-## av1/ Module (656 lines)
+## av1/ Module (633 lines)
 
 ### av1/profiles.py (127 lines)
 AV1 profile definitions and selection logic.
@@ -250,8 +278,8 @@ Source: AV1 Bitstream Spec Annex A.
 
 High tier only available for levels ≥ 4.0 (idx ≥ 8). idx 31 = unconstrained.
 
-### av1/decode.py (431 lines)
-AV1 codec string parser with semantic validation.
+### av1/decode.py (408 lines)
+AV1 codec string parser with semantic validation. Uses `strip_hls_brands()` from hls.py.
 Source: AV1-ISOBMFF §5 (Codecs Parameter String).
 
 | Line | Symbol | Description |
@@ -285,7 +313,7 @@ Defaults:   M=0, CCC=110, cp=01, tc=01, mc=01, F=0
 
 ---
 
-## hevc/ Module (2,074 lines) — unchanged from Batch 7
+## hevc/ Module (2,059 lines)
 
 ### hevc/profiles.py (353 lines)
 13 HEVC profiles with constraint byte computation engine.
@@ -293,15 +321,17 @@ Defaults:   M=0, CCC=110, cp=01, tc=01, mc=01, F=0
 ### hevc/levels.py (113 lines)
 HEVC level table (1.0–6.2), 19 defined levels.
 
-### hevc/decode.py (1,608 lines)
-Full HEVC codec string decoder with 14 semantic checks.
+### hevc/decode.py (1,592 lines)
+Full HEVC codec string decoder with 14 semantic checks. Uses `strip_hls_brands()` from hls.py.
+Returns `findings` list, lowercase `family: "hevc"`, and `verdict` field.
 
 ---
 
-## dv/ Module (825 lines)
+## dv/ Module (826 lines)
 
-### dv/profiles.py (336 lines)
+### dv/profiles.py (345 lines)
 10 DV compatibility entries. Profile 10 (AV1 base) at line 150.
+`METADATA_DELIVERY` dict at line ~315 (shared by resolve.py and hybrid.py).
 
 ### dv/levels.py (145 lines)
 DV level table + dual mapping to both HEVC and AV1 levels.
@@ -329,8 +359,9 @@ DV level table + dual mapping to both HEVC and AV1 levels.
 | 12 | 4320p48 | 17 | 6.1 |
 | 13 | 4320p60 | 17 | 6.1 |
 
-### dv/decode.py (344 lines)
-DV codec string decoder (triplet/unified/brand formats).
+### dv/decode.py (335 lines)
+DV codec string decoder (triplet/unified/brand formats). Uses `strip_hls_brands()` from hls.py.
+Returns `findings` list with structured `{severity, code, message}` dicts, lowercase `family: "dv"`, and `verdict` field.
 
 ---
 
@@ -346,29 +377,31 @@ Content ─→ resolve.py
 
 ### Reverse path: codec strings → decoded dicts
 ```
-"hvc1.2.4.L153.B0"   ─→ decode_codec_string() ─→ decode_hevc()  ─→ {family:"HEVC", ...}
-"av01.0.13M.10"       ─→ decode_codec_string() ─→ decode_av1()   ─→ {family:"av1", ...}
-"dav1.10.09"          ─→ decode_codec_string() ─→ decode_dv()    ─→ {family:"Dolby Vision", ...}
+"hvc1.2.4.L153.B0"   ─→ decode_codec_string() ─→ decode_hevc()  ─→ {family:"hevc", findings:[], verdict:"VALID"}
+"av01.0.13M.10"       ─→ decode_codec_string() ─→ decode_av1()   ─→ {family:"av1", findings:[], verdict:"VALID"}
+"dav1.10.09"          ─→ decode_codec_string() ─→ decode_dv()    ─→ {family:"dv", findings:[], verdict:"VALID"}
 ```
+Entry detection uses `CODEC_ENTRIES` from registry.py (no hardcoded if/elif).
 
 ### Hybrid path: "base, dv" → cross-validated result
 ```
 "hvc1..., dvh1..."  ─→ decode_hybrid_string()
                           ├─ decode_hevc() + decode_dv()
-                          └─ validate_hybrid()      ─→ {valid, issues[], notes[]}
+                          └─ validate_hybrid()      ─→ {valid, issues[], notes[{severity,message}]}
 
 "av01..., dav1..."  ─→ decode_hybrid_string()
                           ├─ decode_av1() + decode_dv()
-                          └─ validate_av1_hybrid()  ─→ {valid, issues[], notes[]}
+                          └─ validate_av1_hybrid()  ─→ {valid, issues[], notes[{severity,message}]}
 ```
 
 ### Dependency graph (imports)
 ```
 __init__.py ──→ models, resolve, hybrid, hevc.decode, av1.decode, dv.decode
-__main__.py ──→ models, resolve, hybrid, hevc.decode, dv.decode, display, tests
+__main__.py ──→ models, resolve, hybrid, hevc.decode, dv.decode, display, tests, registry
+registry.py ──→ (standalone, no imports)
 resolve.py  ──→ models, hevc.profiles, hevc.levels, av1.profiles, av1.levels, dv.profiles, dv.levels, hls
-hybrid.py   ──→ models, hevc.decode, av1.decode, av1.levels, dv.decode, dv.profiles, dv.levels, hls
-display.py  ──→ models, dv.profiles, dv.levels
+hybrid.py   ──→ models, hevc.decode, av1.decode, av1.levels, dv.decode, dv.profiles, dv.levels, hls, registry
+display.py  ──→ models, dv.levels
 
 hevc/       ──→ models (NEVER imports dv/ or av1/)
 av1/        ──→ models (NEVER imports hevc/ or dv/)
@@ -413,4 +446,5 @@ db4h, db1p, db2g, cdm4, unknown, no brand, HEVC+brand, hybrid+brand
 | 5 | Hybrid cross-validation | ~4,500 | 56 |
 | 6 | Decode test suite + roundtrips | ~5,000 | 79 |
 | 7 | HLS brands + package refactor | 5,648 | 96 |
-| **8** | **AV1 + dav1 full integration** | **6,993** | **118** |
+| 8 | AV1 + dav1 full integration | 6,993 | 118 |
+| **9** | **Phase 0 Audit: schema normalization, registry, dedup, structured notes** | **7,034** | **118** |

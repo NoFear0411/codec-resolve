@@ -17,7 +17,7 @@ from .levels import AV1_LEVELS, AV1_LEVEL_LOOKUP, _level_name_from_idx
 from ..models import (
     Chroma, COLOR_PRIMARIES, TRANSFER_CHARACTERISTICS, MATRIX_COEFFICIENTS,
 )
-from ..hls import HLS_DV_BRANDS
+from ..hls import strip_hls_brands
 
 
 # ── Defaults for optional fields (per AV1-ISOBMFF §5) ──────────────
@@ -51,37 +51,14 @@ def decode_av1(codec_string: str) -> dict:
     s = codec_string.strip()
 
     # ── Step 1: Strip HLS brand suffix (/brand) ────────────────────
-    hls_brands = []
-    if "/" in s:
-        slash_idx = s.index("/")
-        codec_part = s[:slash_idx]
-        brand_part = s[slash_idx + 1:]
-        for brand_str in brand_part.split("/"):
-            brand_str = brand_str.strip()
-            if not brand_str:
-                continue
-            info = HLS_DV_BRANDS.get(brand_str)
-            if info:
-                hls_brands.append({
-                    "brand": brand_str,
-                    "description": info.description,
-                    "video_range": info.video_range,
-                    "spec_owner": info.spec_owner,
-                })
-            else:
-                hls_brands.append({
-                    "brand": brand_str,
-                    "description": "Unknown brand",
-                    "video_range": None,
-                    "spec_owner": None,
-                })
-                findings.append({
-                    "severity": "warning",
-                    "code": "AV1_BRAND_UNKNOWN",
-                    "message": f"Unknown HLS brand '/{brand_str}' — "
-                               f"not in MP4RA registry",
-                })
-        s = codec_part
+    s, hls_brands, unknown_brands = strip_hls_brands(s)
+    for ub in unknown_brands:
+        findings.append({
+            "severity": "warning",
+            "code": "AV1_BRAND_UNKNOWN",
+            "message": f"Unknown HLS brand '/{ub}' — "
+                       f"not in MP4RA registry",
+        })
 
     if hls_brands:
         result["hls_brands"] = hls_brands

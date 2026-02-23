@@ -72,8 +72,10 @@ def print_results(content: Content, results: List[ResolvedCodec],
                 print(f"    {status}")
                 for issue in val["issues"]:
                     print(f"    ✗ {issue}")
+                _NOTE_PREFIX = {"pass": "✓ ", "warning": "⚠ ", "info": "ℹ ", "note": ""}
                 for note in val["notes"]:
-                    print(f"    {note}")
+                    pfx = _NOTE_PREFIX.get(note["severity"], "")
+                    print(f"    {pfx}{note['message']}")
 
                 compat = val.get("compat")
                 if compat and compat.fallback_format:
@@ -108,7 +110,7 @@ def print_hybrid(result: dict):
     val = result["validation"]
 
     # Count all issues for overall status
-    base_findings = base.get("validation_findings", base.get("findings", []))
+    base_findings = base.get("findings", [])
     base_errors = [f for f in base_findings if f["severity"] == "error"]
     base_warnings = [f for f in base_findings if f["severity"] == "warning"]
     cross_invalid = not val["valid"]
@@ -203,8 +205,10 @@ def print_hybrid(result: dict):
     if val["issues"]:
         for issue in val["issues"]:
             print(f"  ║    ✗ {issue}")
+    _NOTE_PREFIX = {"pass": "✓ ", "warning": "⚠ ", "info": "ℹ ", "note": ""}
     for note in val["notes"]:
-        print(f"  ║    {note}")
+        pfx = _NOTE_PREFIX.get(note["severity"], "")
+        print(f"  ║    {pfx}{note['message']}")
 
     # ── Fallback Behavior ────────────────────────────────
     compat = val.get("compat")
@@ -326,7 +330,7 @@ def print_decoded(d: dict):
         else:
             print(f"  │  ╸ Verdict: ✓ VALID")
 
-    elif d["family"] == "HEVC":
+    elif d["family"] == "hevc":
         # ── Profile ──────────────────────────────────────────
         print(f"  │")
         print(f"  │  Profile:  {d['profile_idc']} — {d['profile_name']}")
@@ -400,7 +404,7 @@ def print_decoded(d: dict):
                 print(f"  │  ⚠ Parse: {warn}")
 
         # ── Contextual Validation ────────────────────────────
-        findings = d.get("validation_findings", [])
+        findings = d.get("findings", [])
         errors = [f for f in findings if f["severity"] == "error"]
         warnings = [f for f in findings if f["severity"] == "warning"]
         infos = [f for f in findings if f["severity"] == "info"]
@@ -464,7 +468,7 @@ def print_decoded(d: dict):
         else:
             print(f"  │  ╸ Verdict: ✓ VALID")
 
-    elif d["family"] == "Dolby Vision":
+    elif d["family"] == "dv":
         print(f"  │  BL codec: {d.get('base_layer_codec', '—')}")
         print(f"  │")
         print(f"  │  Profile:  {d['profile_idc']} — {d['profile_name']}")
@@ -487,10 +491,14 @@ def print_decoded(d: dict):
             print(f"  │  EL:       {'Present (dual-layer)' if d['enhancement_layer'] else 'None (single-layer + RPU)'}")
         if "cross_compat" in d:
             print(f"  │  Cross:    {d['cross_compat']}")
-        if "warning" in d:
-            print(f"  │  ⚠ {d['warning']}")
-        if "entry_warning" in d:
-            print(f"  │  ⚠ {d['entry_warning']}")
+        # Structured findings (warnings/errors)
+        dv_findings = d.get("findings", [])
+        dv_warnings = [f for f in dv_findings if f["severity"] == "warning"]
+        dv_errors = [f for f in dv_findings if f["severity"] == "error"]
+        for f in dv_errors:
+            print(f"  │  ✗ [{f['code']}] {f['message']}")
+        for f in dv_warnings:
+            print(f"  │  ⚠ [{f['code']}] {f['message']}")
         if "status" in d:
             print(f"  │  Status:   {d['status']}")
 
@@ -521,12 +529,13 @@ def print_decoded(d: dict):
                           f"[{bf['code']}] {bf['message']}")
 
         # ── DV Verdict ───────────────────────────────────────
-        dv_warnings = sum(1 for k in ("warning", "entry_warning",
-                                       "parse_warning") if k in d)
         print(f"  │")
-        if dv_warnings:
+        if dv_errors:
+            print(f"  │  ╸ Verdict: ✗ INVALID — "
+                  f"{len(dv_errors)} error{'s' if len(dv_errors) != 1 else ''}")
+        elif dv_warnings:
             print(f"  │  ╸ Verdict: ⚠ VALID with "
-                  f"{dv_warnings} warning{'s' if dv_warnings != 1 else ''}")
+                  f"{len(dv_warnings)} warning{'s' if len(dv_warnings) != 1 else ''}")
         else:
             print(f"  │  ╸ Verdict: ✓ VALID")
 
@@ -557,7 +566,7 @@ def print_decoded(d: dict):
                           f"{si.get('chroma', '?')}")
 
                 # Surface HEVC validation findings (Gap A fix)
-                eh_findings = eh.get("validation_findings", [])
+                eh_findings = eh.get("findings", [])
                 eh_errors = [f for f in eh_findings
                              if f["severity"] == "error"]
                 eh_warns = [f for f in eh_findings
@@ -580,8 +589,10 @@ def print_decoded(d: dict):
                 print(f"  │  Cross-validation:")
                 for issue in v.get("issues", []):
                     print(f"  │    ✗ {issue}")
+                _NOTE_PREFIX = {"pass": "✓ ", "warning": "⚠ ", "info": "ℹ ", "note": ""}
                 for note in v.get("notes", []):
-                    print(f"  │    {note}")
+                    pfx = _NOTE_PREFIX.get(note["severity"], "")
+                    print(f"  │    {pfx}{note['message']}")
 
                 verdict = ("✓ VALID" if v.get("valid", False)
                            else f"✗ INVALID — "

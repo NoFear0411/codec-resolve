@@ -10,7 +10,7 @@ from .models import TRANSFER_TO_TC, GAMUT_TO_CP, GAMUT_TO_MC
 from .hevc.levels import resolve_hevc_level, resolve_hevc_tier
 from .hevc.profiles import resolve_hevc_profile, format_hevc_string, HEVCProfile, HEVC_PROFILE_DEFS
 from .dv.levels import resolve_dv_level
-from .dv.profiles import resolve_dv_profile, format_dv_string, DV_COMPAT, _dv_sub_key
+from .dv.profiles import resolve_dv_profile, format_dv_string, DV_COMPAT, _dv_sub_key, METADATA_DELIVERY
 from .av1.levels import resolve_av1_level, resolve_av1_tier
 from .av1.profiles import (
     resolve_av1_profile, format_av1_string, AV1_PROFILE_DEFS,
@@ -142,12 +142,7 @@ def _resolve_dv(c: Content, entry: str) -> ResolvedCodec:
         notes.append("Fallback: single-eye 2D HEVC Main 10")
 
     # Metadata delivery
-    delivery = {"dvh1": "out-of-band (sample description — HLS/MP4)",
-                "dvhe": "in-band (NAL units — DASH/TS)",
-                "dva1": "out-of-band (sample description — HLS/MP4)",
-                "dvav": "in-band (NAL units)",
-                "dav1": "out-of-band (sample description)"}
-    notes.append(f"{entry}: RPU {delivery.get(entry, entry)}")
+    notes.append(f"{entry}: RPU {METADATA_DELIVERY.get(entry, entry)}")
 
     return ResolvedCodec(
         codec_string=codec_str,

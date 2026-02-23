@@ -12,6 +12,7 @@ from .hevc.decode import decode_hevc
 from .dv.decode import decode_dv
 from .display import print_results, print_bare, print_hybrid, print_decoded
 from .tests import self_test, decode_self_test
+from .registry import ALL_ENTRIES, ENTRY_ALIASES, CODEC_ENTRIES
 
 RESOLUTION_PRESETS = {
     "720p": (1280, 720), "hd": (1280, 720),
@@ -37,24 +38,15 @@ def parse_resolution(s):
 
 def parse_codecs(s):
     families = [f.strip().lower() for f in s.split(",")]
-    valid = {"hvc1", "hev1", "dvhe", "dvh1", "dvav", "dva1", "dav1", "av01"}
-    aliases = {
-        "hevc": ["hvc1", "hev1"],
-        "av1": ["av01"],
-        "dv": ["dvhe", "dvh1"],
-        "dv-avc": ["dvav", "dva1"],
-        "dv-av1": ["dav1"],
-        "all": ["hvc1", "hev1", "av01", "dvhe", "dvh1"],
-    }
     result = []
     for f in families:
-        if f in valid:
+        if f in ALL_ENTRIES:
             result.append(f)
-        elif f in aliases:
-            result.extend(aliases[f])
+        elif f in ENTRY_ALIASES:
+            result.extend(ENTRY_ALIASES[f])
         else:
             raise ValueError(f"Unknown codec: '{f}'. "
-                             f"Valid: {', '.join(sorted(valid | set(aliases.keys())))}")
+                             f"Valid: {', '.join(sorted(ALL_ENTRIES | set(ENTRY_ALIASES.keys())))}")
     return list(dict.fromkeys(result))
 
 
@@ -365,9 +357,9 @@ def main():
             # Check if we have exactly one HEVC + one DV → auto-hybrid
             entries = [s.split(".")[0].lower() for s in strings]
             hevc_entries = [s for s, e in zip(strings, entries)
-                           if e in ("hvc1", "hev1")]
+                           if CODEC_ENTRIES.get(e, {}).get("family") == "hevc"]
             dv_entries = [s for s, e in zip(strings, entries)
-                         if e in ("dvhe", "dvh1", "dva1", "dvav", "dav1")]
+                         if CODEC_ENTRIES.get(e, {}).get("family") == "dv"]
 
             if len(hevc_entries) == 1 and len(dv_entries) == 1:
                 # Auto-detect hybrid pair
