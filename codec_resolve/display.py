@@ -606,6 +606,61 @@ def print_decoded(d: dict):
                 print(f"  │  ✗ HEVC decode error: "
                       f"{d['embedded_hevc_error']}")
 
+    elif d["family"] == "vp9":
+        # ── VP9 Profile ────────────────────────────────────────
+        print(f"  │")
+        print(f"  │  Profile:  {d['profile']} — {d['profile_name']}")
+        print(f"  │  Level:    {d['level_name']} (value={d['level_value']})")
+        print(f"  │  Depth:    {d['bit_depth']}-bit")
+
+        # ── Color Parameters ───────────────────────────────────
+        chroma_label = d.get('chroma_name', '?')
+        if d.get('chroma_sample_position') is not None:
+            csp_name = d.get('chroma_sample_position_name', '')
+            chroma_label += f" (CC {d['chroma_subsampling']:02d}: {csp_name})"
+        print(f"  │  Chroma:   {chroma_label}")
+
+        cp_name = d.get('color_primaries_name', '?')
+        tc_name = d.get('transfer_characteristics_name', '?')
+        mc_name = d.get('matrix_coefficients_name', '?')
+        print(f"  │  Color:    {cp_name} primaries, "
+              f"{tc_name} transfer, {mc_name} matrix")
+        print(f"  │  Range:    {d.get('video_range_name', '?')}")
+
+        if d.get('max_bitrate_kbps'):
+            mbps = d['max_bitrate_kbps'] / 1000
+            print(f"  │  Bitrate:  ≤{mbps:g} Mbps (no tiers)")
+
+        if not d.get('has_optional_fields'):
+            print(f"  │")
+            print(f"  │  ℹ Short form — optional color fields use defaults")
+
+        # ── Validation ─────────────────────────────────────────
+        findings = d.get("findings", [])
+        errors = [f for f in findings if f["severity"] == "error"]
+        warnings = [f for f in findings if f["severity"] == "warning"]
+        infos = [f for f in findings if f["severity"] == "info"]
+
+        if errors or warnings or infos:
+            print(f"  │")
+            print(f"  │  Validation:")
+            for f in errors:
+                print(f"  │    ✗ [{f['code']}] {f['message']}")
+            for f in warnings:
+                print(f"  │    ⚠ [{f['code']}] {f['message']}")
+            for f in infos:
+                print(f"  │    ℹ [{f['code']}] {f['message']}")
+
+        # ── Verdict ────────────────────────────────────────────
+        print(f"  │")
+        if errors:
+            print(f"  │  ╸ Verdict: ✗ INVALID — "
+                  f"{len(errors)} error{'s' if len(errors) != 1 else ''}")
+        elif warnings:
+            print(f"  │  ╸ Verdict: ⚠ VALID with warnings")
+        else:
+            print(f"  │  ╸ Verdict: ✓ VALID")
+
     print(f"  │")
     print(f"  └─")
     print()

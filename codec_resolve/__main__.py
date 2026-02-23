@@ -74,8 +74,8 @@ HELP_TEXT = """
 
  REQUIRED    FLAG        VALUES
  ──────────  ──────────  ────────────────────────────────────
- codec       --codec     hvc1 hev1 dvhe dvh1 │ hevc dv all
-                         dvav dva1 dav1 │ dv-avc dv-av1
+ codec       --codec     hvc1 hev1 av01 vp09 │ hevc av1 vp9 all
+                         dvhe dvh1 dvav dva1 dav1 │ dv dv-avc dv-av1
  resolution  -r          3840x2160 │ 4k 1080p 720p 8k ...
  framerate   --fps       23.976  29.97  59.94  60  120
  bit depth   -d          8-16 (integer, all values for RExt)
@@ -113,6 +113,8 @@ HELP_TEXT = """
 
  Accepts four input formats:
    HEVC standalone:    %(prog)s --decode hvc1.2.4.L153.B0
+   AV1 standalone:     %(prog)s --decode av01.0.13M.10
+   VP9 standalone:     %(prog)s --decode vp09.02.10.10.01.09.16.09.01
    DV triplet:         %(prog)s --decode dvh1.08.06
    DV unified format:  %(prog)s --decode dvh1.08.06.H153.B0.00.00.00.00.00
    Hybrid pair:        %(prog)s --decode "hvc1.2.4.L153.B0, dvh1.08.06"
@@ -385,7 +387,7 @@ def main():
 
     req = parser.add_argument_group("Content (all required)")
     req.add_argument("--codec", required=True,
-                     help="hvc1,hev1,dvhe,dvh1,dvav,dva1,dav1 | hevc,dv,dv-avc,dv-av1,all")
+                     help="hvc1,hev1,av01,vp09,dvhe,dvh1,dvav,dva1,dav1 | hevc,av1,vp9,dv,dv-avc,dv-av1,all")
     req.add_argument("-r", "--resolution", required=True, metavar="WxH",
                      help="3840x2160 | 4k,1080p,720p,8k...")
     req.add_argument("--fps", required=True, type=float,

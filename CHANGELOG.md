@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.1.0
+
+VP9 codec family support.
+
+### Features
+- **VP9 forward resolve:** Content parameters → `vp09.PP.LL.DD.CC.cp.tc.mc.FF` (full 9-field form)
+- **VP9 reverse decode:** Parse VP9 codec strings (short 4-field and full 9-field forms) with 7 error codes, 1 warning, 3 info codes
+- **VP9 profile selection:** 4 profiles via orthogonal bit-depth × chroma axes (P0/P1/P2/P3)
+- **VP9 level resolution:** 13 levels (1–6.2) from pic_size × max_dim × sample_rate constraints
+- **VP9 display output:** Standalone pretty-print with profile, level, chroma CC code, H.273 color names
+
+### Codecs
+- **VP9:** 4 profiles (Profile 0–3), 13 levels (1–6.2), chroma subsampling validation (CC field), H.273 color parameter support
+
+### Integration
+- Registry: `vp09` entry + `vp9` alias
+- Hybrid routing: `decode_codec_string()` dispatches VP9 automatically
+- CLI: `--codec vp09` for forward resolve, `--decode "vp09.XX.XX.XX"` for reverse decode
+- Public API: `decode_vp9()` exported from `codec_resolve`
+
+### Tests
+- 140 tests: 55 forward-resolve (+8), 43 decode (+10), 17 hybrid, 8 brand, 17 roundtrip (+4)
+
+---
+
 ## 1.0.0
 
 Initial release.

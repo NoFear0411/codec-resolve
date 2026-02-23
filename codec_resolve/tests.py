@@ -1,5 +1,5 @@
 """
-Self-test suite: 47 resolve + 21 decode + 11 hybrid + 8 brand + 9 roundtrip = 96 tests.
+Self-test suite: 55 resolve + 43 decode + 17 hybrid + 8 brand + 17 roundtrip = 140 tests.
 """
 from .models import Content, Chroma, Transfer, Gamut, Scan, Tier, ConstraintStyle
 from .hevc.levels import resolve_hevc_level, resolve_hevc_tier
@@ -277,6 +277,48 @@ def self_test() -> bool:
         (Content(7680, 4320, 30.0, 10, Chroma.YUV420, Transfer.PQ, Gamut.BT2020),
          "dvh1", "dvh1.08.12",
          "DV 8.1 8K@30 → Level 12"),
+
+        # === VP9 ===
+
+        # VP9 P0: 8-bit 4:2:0 SDR 1080p → Level 4 (full form)
+        (Content(1920, 1080, 30.0, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "vp09", "vp09.00.40.08.01.01.01.01.00",
+         "VP9 P0 1080p30 SDR → L4 (value=40)"),
+
+        # VP9 P0: 720p30 SDR
+        (Content(1280, 720, 30.0, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "vp09", "vp09.00.31.08.01.01.01.01.00",
+         "VP9 P0 720p30 SDR → L3.1 (value=31)"),
+
+        # VP9 P2: 4K HDR10 (10-bit 4:2:0 PQ BT.2020)
+        (Content(3840, 2160, 23.976, 10, Chroma.YUV420, Transfer.PQ, Gamut.BT2020),
+         "vp09", "vp09.02.50.10.01.09.16.09.00",
+         "VP9 P2 4K HDR10 → L5 (value=50)"),
+
+        # VP9 P2: 4K60 HLG
+        (Content(3840, 2160, 60.0, 10, Chroma.YUV420, Transfer.HLG, Gamut.BT2020),
+         "vp09", "vp09.02.51.10.01.09.18.09.00",
+         "VP9 P2 4K60 HLG → L5.1 (value=51)"),
+
+        # VP9 P1: 8-bit 4:4:4
+        (Content(1920, 1080, 30.0, 8, Chroma.YUV444, Transfer.SDR, Gamut.BT709),
+         "vp09", "vp09.01.40.08.03.01.01.01.00",
+         "VP9 P1 1080p 4:4:4 SDR → L4"),
+
+        # VP9 P3: 10-bit 4:2:2 (professional)
+        (Content(3840, 2160, 30.0, 10, Chroma.YUV422, Transfer.PQ, Gamut.BT2020),
+         "vp09", "vp09.03.50.10.02.09.16.09.00",
+         "VP9 P3 4K 4:2:2 HDR → L5"),
+
+        # VP9 P2: 12-bit 4:2:0 (valid but rare)
+        (Content(3840, 2160, 30.0, 12, Chroma.YUV420, Transfer.PQ, Gamut.BT2020),
+         "vp09", "vp09.02.50.12.01.09.16.09.00",
+         "VP9 P2 4K 12-bit → L5"),
+
+        # VP9 P0: 8K30 SDR
+        (Content(7680, 4320, 30.0, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "vp09", "vp09.00.60.08.01.01.01.01.00",
+         "VP9 P0 8K30 SDR → L6 (value=60)"),
 
         # === MULTI-CODEC ===
         # These are tested by calling resolve() with multiple codecs
@@ -572,6 +614,89 @@ def decode_self_test() -> bool:
             ("seq_profile", 0),
             ("verdict", "VALID"),
         ]),
+
+        # ══ VP9 Decode Tests ═════════════════════════════════════
+        # VP9-D1: P0 L3.1 8-bit short form
+        ("vp09.00.31.08", [
+            ("family", "vp9"),
+            ("profile", 0),
+            ("profile_name", "Profile 0"),
+            ("level_value", 31),
+            ("level_name", "3.1"),
+            ("bit_depth", 8),
+            ("has_optional_fields", False),
+            ("verdict", "VALID"),
+        ]),
+        # VP9-D2: P2 L1.0 10-bit full form PQ/BT.2020 full range
+        ("vp09.02.10.10.01.09.16.09.01", [
+            ("family", "vp9"),
+            ("profile", 2),
+            ("profile_name", "Profile 2"),
+            ("level_value", 10),
+            ("bit_depth", 10),
+            ("has_optional_fields", True),
+            ("color_primaries", 9),
+            ("transfer_characteristics", 16),
+            ("matrix_coefficients", 9),
+            ("video_full_range_flag", 1),
+            ("verdict", "VALID"),
+        ]),
+        # VP9-D3: P0 L4 8-bit full form SDR
+        ("vp09.00.40.08.01.01.01.01.00", [
+            ("family", "vp9"),
+            ("profile", 0),
+            ("level_name", "4"),
+            ("bit_depth", 8),
+            ("has_optional_fields", True),
+            ("color_primaries", 1),
+            ("transfer_characteristics", 1),
+            ("video_full_range_flag", 0),
+            ("verdict", "VALID"),
+        ]),
+        # VP9-D4: P1 L4.0 8-bit short form (non-4:2:0, short form ok)
+        ("vp09.01.40.08", [
+            ("family", "vp9"),
+            ("profile", 1),
+            ("profile_name", "Profile 1"),
+            ("has_optional_fields", False),
+            ("verdict", "VALID"),
+        ]),
+        # VP9-D5: P3 L5 10-bit short form
+        ("vp09.03.50.10", [
+            ("family", "vp9"),
+            ("profile", 3),
+            ("profile_name", "Profile 3"),
+            ("level_name", "5"),
+            ("bit_depth", 10),
+            ("verdict", "VALID"),
+        ]),
+        # VP9-D6: P2 12-bit → VALID (with 12-bit rarity warning)
+        ("vp09.02.50.12", [
+            ("family", "vp9"),
+            ("profile", 2),
+            ("bit_depth", 12),
+            ("verdict", "VALID"),
+        ]),
+        # VP9-D7: Profile 4 → INVALID (no such profile)
+        ("vp09.04.31.08", [
+            ("family", "vp9"),
+            ("verdict", "INVALID"),
+        ]),
+        # VP9-D8: P0 + 12-bit → INVALID (P0 only supports {8})
+        ("vp09.00.31.12", [
+            ("family", "vp9"),
+            ("verdict", "INVALID"),
+        ]),
+        # VP9-D9: 5 fields → INVALID (partial optional fields)
+        ("vp09.00.31.08.01", [
+            ("family", "vp9"),
+            ("verdict", "INVALID"),
+        ]),
+        # VP9-D10: P1 full form CC=01 (4:2:0) → INVALID (P1 needs CC 02/03)
+        ("vp09.01.40.08.01.01.01.01.00", [
+            ("family", "vp9"),
+            ("verdict", "INVALID"),
+        ]),
     ]
 
     for codec_string, checks in tests:
@@ -791,6 +916,20 @@ def decode_self_test() -> bool:
         # AV1-R4: 4K60 12-bit 4:2:2 P2
         (Content(3840, 2160, 60.0, 12, Chroma.YUV422, Transfer.PQ, Gamut.BT2020),
          "av01", "AV1 Professional 4K60 12-bit 4:2:2"),
+
+        # ── VP9 Roundtrip Tests ─────────────────────────────────
+        # VP9-R1: 1080p30 8-bit SDR
+        (Content(1920, 1080, 30.0, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "vp09", "VP9 P0 1080p30 SDR → L4"),
+        # VP9-R2: 4K30 10-bit HDR10
+        (Content(3840, 2160, 30.0, 10, Chroma.YUV420, Transfer.PQ, Gamut.BT2020),
+         "vp09", "VP9 P2 4K30 HDR10 → L5"),
+        # VP9-R3: 8K30 8-bit SDR
+        (Content(7680, 4320, 30.0, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "vp09", "VP9 P0 8K30 SDR → L6"),
+        # VP9-R4: 4K 10-bit 4:2:2 (Profile 3)
+        (Content(3840, 2160, 30.0, 10, Chroma.YUV422, Transfer.PQ, Gamut.BT2020),
+         "vp09", "VP9 P3 4K 4:2:2 HDR"),
     ]
 
     for content, codec, desc in roundtrip_tests:
@@ -863,6 +1002,29 @@ def decode_self_test() -> bool:
                 r_depth = int(resolved.codec_string.split(".")[3])
                 if decoded["bit_depth"] != r_depth:
                     issues.append(f"av1_depth: {r_depth}→{decoded['bit_depth']}")
+
+                # Verify decoded verdict is VALID
+                if decoded.get("verdict") != "VALID":
+                    issues.append(f"verdict: {decoded.get('verdict')}")
+
+            elif resolved.family == "vp9":
+                # Verify VP9 profile roundtrips
+                r_profile = int(resolved.codec_string.split(".")[1])
+                if decoded["profile"] != r_profile:
+                    issues.append(
+                        f"vp9_profile: {r_profile}→{decoded['profile']}")
+
+                # Verify level roundtrips
+                r_level = int(resolved.codec_string.split(".")[2])
+                if decoded["level_value"] != r_level:
+                    issues.append(
+                        f"vp9_level: {r_level}→{decoded['level_value']}")
+
+                # Verify bit depth roundtrips
+                r_depth = int(resolved.codec_string.split(".")[3])
+                if decoded["bit_depth"] != r_depth:
+                    issues.append(
+                        f"vp9_depth: {r_depth}→{decoded['bit_depth']}")
 
                 # Verify decoded verdict is VALID
                 if decoded.get("verdict") != "VALID":

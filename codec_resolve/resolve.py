@@ -16,6 +16,11 @@ from .av1.profiles import (
     resolve_av1_profile, format_av1_string, AV1_PROFILE_DEFS,
     BITRATE_PROFILE_FACTOR, SUBSAMPLING_FROM_CHROMA,
 )
+from .vp9.levels import resolve_vp9_level
+from .vp9.profiles import (
+    resolve_vp9_profile, format_vp9_string, VP9_PROFILE_DEFS,
+    CC_FROM_CHROMA,
+)
 
 
 def resolve(content: Content, codecs: List[str]) -> List[ResolvedCodec]:
@@ -32,9 +37,11 @@ def resolve(content: Content, codecs: List[str]) -> List[ResolvedCodec]:
             results.append(_resolve_dv(content, codec))
         elif codec == "av01":
             results.append(_resolve_av1(content, codec))
+        elif codec == "vp09":
+            results.append(_resolve_vp9(content, codec))
         else:
             raise ValueError(f"Unknown codec entry: '{codec}'. "
-                             f"Use: hvc1, hev1, av01, dvhe, dvh1, dvav, dva1, dav1")
+                             f"Use: hvc1, hev1, av01, vp09, dvhe, dvh1, dvav, dva1, dav1")
     return results
 
 
@@ -210,6 +217,58 @@ def _resolve_av1(c: Content, entry: str) -> ResolvedCodec:
         profile_name=f"AV1 {pdef.name} (profile {profile_idx})",
         level_name=f"Level {level.name} (seq_level_idx={level.seq_level_idx})",
         tier_name="High" if tier == 1 else "Main",
+        notes=notes,
+    )
+
+
+def _resolve_vp9(c: Content, entry: str) -> ResolvedCodec:
+    """Resolve a single VP9 codec string (always full 9-field form)."""
+    profile_idx = resolve_vp9_profile(c)
+    level = resolve_vp9_level(c)
+
+    # Chroma subsampling CC value
+    cc = CC_FROM_CHROMA.get(c.chroma, 1)  # default 01 (4:2:0 colocated)
+
+    # Color parameters from Content enums → H.273 codes
+    cp = GAMUT_TO_CP.get(c.gamut, 1)
+    tc = TRANSFER_TO_TC.get(c.transfer, 1)
+    mc = GAMUT_TO_MC.get(c.gamut, 1)
+
+    # Full range flag: 0 = limited (studio swing), 1 = full (PC)
+    video_full_range_flag = 0
+
+    codec_str = format_vp9_string(
+        profile=profile_idx, level_value=level.value,
+        bit_depth=c.bit_depth,
+        chroma_subsampling=cc,
+        color_primaries=cp, transfer_characteristics=tc,
+        matrix_coefficients=mc,
+        video_full_range_flag=video_full_range_flag,
+    )
+
+    pdef = VP9_PROFILE_DEFS[profile_idx]
+    mbps = level.max_bitrate_kbps / 1000
+
+    notes = []
+    notes.append(f"Max bitrate: {mbps:g} Mbps "
+                 f"(Level {level.name}, no tiers)")
+    if profile_idx == 0:
+        notes.append("VP9 Profile 0 — standard consumer (8-bit 4:2:0)")
+    elif profile_idx == 1:
+        notes.append("VP9 Profile 1 — 8-bit 4:2:2/4:4:4")
+    elif profile_idx == 2:
+        notes.append("VP9 Profile 2 — HDR (10/12-bit 4:2:0)")
+    elif profile_idx == 3:
+        notes.append("VP9 Profile 3 — professional (10/12-bit 4:2:2/4:4:4)")
+    if c.bit_depth == 12:
+        notes.append("12-bit: valid per spec but rarely deployed")
+
+    return ResolvedCodec(
+        codec_string=codec_str,
+        entry=entry,
+        family="vp9",
+        profile_name=f"VP9 {pdef.name} (profile {profile_idx})",
+        level_name=f"Level {level.name} (value={level.value})",
         notes=notes,
     )
 

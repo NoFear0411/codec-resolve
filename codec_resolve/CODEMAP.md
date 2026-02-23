@@ -1,23 +1,23 @@
 # CODEMAP.md — codec_resolve Package Reference
-## 7,034 lines · 118 tests · zero dependencies
+## 7,857 lines · 140 tests · zero dependencies
 ### Bidirectional: resolve ↔ decode ↔ validate ↔ hybrid
-### Codec families: HEVC · AV1 · Dolby Vision (Profiles 5/7/8/9/10/20)
+### Codec families: HEVC · AV1 · VP9 · Dolby Vision (Profiles 5/7/8/9/10/20)
 
 ---
 
 ## Package Structure
 
 ```
-codec_resolve/                    7,034 lines total
-├── __init__.py          39       Public API re-exports
-├── __main__.py         499       CLI: argparse, dispatch, help
+codec_resolve/                    7,857 lines total
+├── __init__.py          41       Public API re-exports
+├── __main__.py         501       CLI: argparse, dispatch, help
 ├── models.py           284       Shared enums + dataclasses + H.273 color tables
-├── registry.py          30       Codec entry point registry (FourCC → family)
+├── registry.py          32       Codec entry point registry (FourCC → family)
 ├── hls.py              127       HLS brand registry + strip_hls_brands()
-├── resolve.py          220       Master resolver (HEVC + AV1 + DV)
-├── hybrid.py           817       Cross-validation + routing (structured notes)
-├── display.py          613       Pretty-printers (standalone + hybrid)
-├── tests.py            887       118 tests
+├── resolve.py          279       Master resolver (HEVC + AV1 + VP9 + DV)
+├── hybrid.py           820       Cross-validation + routing (structured notes)
+├── display.py          668       Pretty-printers (standalone + hybrid)
+├── tests.py          1,049       140 tests
 ├── hevc/
 │   ├── __init__.py       1
 │   ├── profiles.py     353       13 HEVC profiles + constraint byte engine
@@ -28,6 +28,11 @@ codec_resolve/                    7,034 lines total
 │   ├── profiles.py     127       3 AV1 profiles + resolver + string formatter
 │   ├── levels.py        98       14 AV1 levels (2.0–6.3) + tier rules
 │   └── decode.py       408       AV1 codec string parser + 9 validation checks
+├── vp9/
+│   ├── __init__.py       0
+│   ├── profiles.py     133       4 VP9 profiles + resolver + string formatter
+│   ├── levels.py        92       13 VP9 levels (1–6.2) + resolver
+│   └── decode.py       315       VP9 codec string parser + 7 validation checks
 └── dv/
     ├── __init__.py       1
     ├── profiles.py     345       10 DV compat entries + METADATA_DELIVERY
@@ -35,26 +40,26 @@ codec_resolve/                    7,034 lines total
     └── decode.py       335       DV decoder (triplet/unified/brand)
 ```
 
-**Architecture rule:** `hevc/`, `dv/`, and `av1/` are SIBLINGS — they never import each other.
+**Architecture rule:** `hevc/`, `dv/`, `av1/`, and `vp9/` are SIBLINGS — they never import each other.
 `hybrid.py` is the ONLY bridge between codec families.
 
 ---
 
 ## Module Reference
 
-### __init__.py (39 lines)
+### __init__.py (41 lines)
 Public API re-exports.
 ```python
 from codec_resolve import (
     resolve, decode_codec_string, decode_hybrid_string,
-    decode_hevc, decode_av1, decode_dv,
+    decode_hevc, decode_av1, decode_vp9, decode_dv,
     validate_hybrid, validate_av1_hybrid,
     Content, Chroma, Transfer, Gamut, Scan, Tier,
     ConstraintStyle, ResolvedCodec,
 )
 ```
 
-### __main__.py (499 lines)
+### __main__.py (501 lines)
 CLI entry point. `./codec-resolve [options]` or `python -m codec_resolve [options]`
 
 | Line | Symbol | Description |
@@ -67,11 +72,12 @@ CLI entry point. `./codec-resolve [options]` or `python -m codec_resolve [option
 
 Key CLI examples:
 ```bash
-python -m codec_resolve --test                                  # 47 resolve tests
-python -m codec_resolve --decode-test                           # 71 decode/hybrid/brand/roundtrip tests
+python -m codec_resolve --test                                  # 55 resolve tests
+python -m codec_resolve --decode-test                           # 85 decode/hybrid/brand/roundtrip tests
 python -m codec_resolve --decode "av01.0.13M.10"                # AV1 standalone
+python -m codec_resolve --decode "vp09.02.50.10.01.09.16.09.00" # VP9 standalone
 python -m codec_resolve --decode "av01.0.13M.10, dav1.10.06"    # AV1+DV hybrid
-python -m codec_resolve --codec av01 -r 4k --fps 60 -d 10 -c 420 -t pq -g bt2020
+python -m codec_resolve --codec vp09 -r 4k --fps 30 -d 10 -c 420 -t pq -g bt2020
 python -m codec_resolve --codec hvc1 -r 4k --fps 30 -d 10 -c 420 -t pq -g bt2020
 python -m codec_resolve --decode "hvc1.2.4.L153.B0, dvh1.08.06" # HEVC+DV hybrid
 ```
@@ -99,20 +105,21 @@ Shared data models and ITU-T H.273 color parameter tables.
 | 272 | `GAMUT_TO_CP` | Gamut enum → expected cp value mapping |
 | 278 | `CP_TO_MC` | Color primaries → default matrix coefficients mapping |
 
-### registry.py (30 lines)
+### registry.py (32 lines)
 Codec entry point registry — single source of truth for FourCC → family dispatch.
 
 | Line | Symbol | Description |
 |------|--------|-------------|
-| 3 | `CODEC_ENTRIES` | Dict: 8 FourCC entries → {family, base_codec, is_dv} |
-| 14 | `ENTRY_ALIASES` | Dict: 6 alias groups (hevc, av1, dv, dv-avc, dv-av1, all) |
-| 23 | `ALL_ENTRIES` | Set of all valid entry points |
+| 3 | `CODEC_ENTRIES` | Dict: 9 FourCC entries → {family, base_codec, is_dv} |
+| 15 | `ENTRY_ALIASES` | Dict: 7 alias groups (hevc, av1, vp9, dv, dv-avc, dv-av1, all) |
+| 25 | `ALL_ENTRIES` | Set of all valid entry points |
 
 **CODEC_ENTRIES:**
 | Entry | Family | Base Codec | DV? |
 |-------|--------|------------|-----|
 | hvc1, hev1 | hevc | HEVC | No |
 | av01 | av1 | AV1 | No |
+| vp09 | vp9 | VP9 | No |
 | dvhe, dvh1 | dv | HEVC | Yes |
 | dvav, dva1 | dv | AVC | Yes |
 | dav1 | dv | AV1 | Yes |
@@ -133,18 +140,20 @@ HLS SUPPLEMENTAL-CODECS brand registry + shared brand stripping.
 | `db4h` | DV cross-compatible with HLG (BT.2100) | 4 | HLG |
 | `cdm4` | HDR10+ (SMPTE 2094-40) | — | PQ |
 
-### resolve.py (220 lines)
+### resolve.py (279 lines)
 Master forward resolver: Content → codec string(s). Uses `METADATA_DELIVERY` from dv/profiles.py.
 
 | Line | Symbol | Description |
 |------|--------|-------------|
-| 10 | `resolve(content, codecs)` | Main entry: dispatches to _resolve_hevc, _resolve_dv, _resolve_av1 |
+| 10 | `resolve(content, codecs)` | Main entry: dispatches to _resolve_hevc, _resolve_dv, _resolve_av1, _resolve_vp9 |
 | 33 | route `av01` | → `_resolve_av1(content, "av01")` |
+| 40 | route `vp09` | → `_resolve_vp9(content, "vp09")` |
 | 48 | `_resolve_hevc(c, entry)` | HEVC forward resolve |
 | 102 | `_resolve_dv(c, entry)` | DV forward resolve (uses METADATA_DELIVERY) |
-| 158 | `_resolve_av1(c, entry)` | AV1 forward resolve: profile → level → tier → color → format_av1_string() |
+| 165 | `_resolve_av1(c, entry)` | AV1 forward resolve: profile → level → tier → color → format_av1_string() |
+| 224 | `_resolve_vp9(c, entry)` | VP9 forward resolve: profile → level → CC → color → format_vp9_string() |
 
-### hybrid.py (817 lines)
+### hybrid.py (820 lines)
 Cross-validation engine + codec string routing. Uses `CODEC_ENTRIES` from registry.py.
 Notes are structured dicts: `{"severity": "pass"|"warning"|"info"|"note", "message": ...}`.
 
@@ -177,7 +186,7 @@ Notes are structured dicts: `{"severity": "pass"|"warning"|"info"|"note", "messa
 | H6 | Entry sync — dvh1/dvhe=HEVC, dav1=AV1, dvav/dva1=AVC |
 | H7+ | Tier bitrate, fallback, metadata delivery, layer structure |
 
-### display.py (613 lines)
+### display.py (668 lines)
 Pretty-printers for all output types. Owns emoji prefix mapping for structured notes via `_NOTE_PREFIX`.
 
 | Line | Symbol | Description |
@@ -313,6 +322,116 @@ Defaults:   M=0, CCC=110, cp=01, tc=01, mc=01, F=0
 
 ---
 
+## vp9/ Module (540 lines)
+
+### vp9/profiles.py (133 lines)
+VP9 profile definitions and selection logic.
+Source: VP9 Bitstream Specification §7.2, VP Codec ISO Media File Format Binding §5.
+
+| Line | Symbol | Description |
+|------|--------|-------------|
+| 14 | `VP9ProfileDef` | Dataclass: profile, name, bit_depths, allowed_chroma, note |
+| 26 | `VP9_PROFILE_DEFS` | 4 profiles (see table below) |
+| 55 | `VP9_PROFILE_NAMES` | {0: "Profile 0", 1: "Profile 1", 2: "Profile 2", 3: "Profile 3"} |
+| 62 | `CHROMA_FROM_CC` | CC value → Chroma enum (0/1→YUV420, 2→YUV422, 3→YUV444) |
+| 69 | `CC_FROM_CHROMA` | Chroma enum → CC value (for forward resolve) |
+| 76 | `CHROMA_SAMPLE_POSITION_NAMES` | {0: "Vertical (left)", 1: "Colocated (top-left)"} |
+| 80 | `VALID_CC_FOR_PROFILE` | Per-profile valid CC values |
+| 89 | `resolve_vp9_profile(c)` | Content → profile index (0–3) via orthogonal axes |
+| 100 | `format_vp9_string(...)` | → "vp09.PP.LL.DD[.CC.cp.tc.mc.FF]" |
+
+**VP9 Profile Table:**
+| Profile | Name | Bit Depths | Chroma | Notes |
+|---------|------|------------|--------|-------|
+| 0 | Profile 0 | {8} | 4:2:0 only | Standard consumer (streaming, browsers) |
+| 1 | Profile 1 | {8} | 4:2:2, 4:4:4 | 8-bit non-4:2:0 content |
+| 2 | Profile 2 | {10, 12} | 4:2:0 only | HDR consumer (10/12-bit) |
+| 3 | Profile 3 | {10, 12} | 4:2:2, 4:4:4 | Professional (10/12-bit non-4:2:0) |
+
+**Profile selection formula:** `profile = (depth > 8 ? 2 : 0) + (chroma ∉ {4:2:0, mono} ? 1 : 0)`
+
+### vp9/levels.py (92 lines)
+VP9 level table and resolution.
+Source: VP9 Bitstream Specification Annex A.
+
+| Line | Symbol | Description |
+|------|--------|-------------|
+| 12 | `VP9Level` | Dataclass: value, name, max_pic_size, max_dim, max_sample_rate, max_bitrate_kbps, max_cpb_kbps, min_cr, max_tiles |
+| 30 | `VP9_LEVELS` | 13 defined levels (list) |
+| 60 | `VP9_LEVEL_LOOKUP` | {value: VP9Level} dict |
+| 63 | `VP9_VALID_LEVEL_VALUES` | Set of all valid level values |
+| 67 | `resolve_vp9_level(c)` | Content → minimum sufficient VP9Level |
+
+**VP9 Level Table:**
+| Value | Level | MaxPicSize | MaxDim | Max Mbps | Example |
+|-------|-------|-----------|--------|----------|---------|
+| 10 | 1 | 36,864 | 512 | 0.2 | 256×144@30 |
+| 20 | 2 | 73,728 | 960 | 0.8 | 352×240@30 |
+| 21 | 2.1 | 245,760 | 1,344 | 1.8 | 480×360@30 |
+| 30 | 3 | 552,960 | 2,048 | 3.6 | 720×480@30 |
+| 31 | 3.1 | 983,040 | 2,752 | 7.2 | 1280×720@30 |
+| 40 | 4 | 2,228,224 | 4,160 | 18.0 | 1920×1080@30 |
+| 41 | 4.1 | 2,228,224 | 4,160 | 30.0 | 1920×1080@60 |
+| 50 | 5 | 8,912,896 | 8,384 | 60.0 | 3840×2160@30 |
+| 51 | 5.1 | 8,912,896 | 8,384 | 120.0 | 3840×2160@60 |
+| 52 | 5.2 | 8,912,896 | 8,384 | 180.0 | 3840×2160@120 |
+| 60 | 6 | 35,651,584 | 16,832 | 180.0 | 7680×4320@30 |
+| 61 | 6.1 | 35,651,584 | 16,832 | 240.0 | 7680×4320@60 |
+| 62 | 6.2 | 35,651,584 | 16,832 | 480.0 | 7680×4320@120 |
+
+VP9 has no tiers — single bitrate cap per level (unlike AV1/HEVC).
+
+### vp9/decode.py (315 lines)
+VP9 codec string parser with semantic validation. Uses `strip_hls_brands()` from hls.py.
+Source: VP Codec ISO Media File Format Binding §5 (Codecs Parameter String).
+
+| Line | Symbol | Description |
+|------|--------|-------------|
+| 25 | `_OPTIONAL_DEFAULTS` | Default values when optional fields omitted |
+| 34 | `decode_vp9(codec_string)` | Main entry: parse + validate → result dict |
+| 231 | `_validate_vp9(result, findings, level_obj)` | Validation checks |
+
+**VP9 codec string format:**
+```
+vp09.<PP>.<LL>.<DD>[.<CC>.<cp>.<tc>.<mc>.<FF>]
+
+Mandatory:  PP=profile, LL=level, DD=bitDepth (all 2-digit zero-padded)
+Optional:   CC=chroma, cp=primaries, tc=transfer, mc=matrix, FF=range
+            Must be ALL or NONE — partial optional fields are invalid.
+Defaults:   CC=00, cp=01, tc=01, mc=01, FF=00
+```
+
+**VP9 Validation Checks:**
+| Severity | Code | Trigger |
+|----------|------|---------|
+| error | VP9_ENTRY_UNKNOWN | Entry is not `vp09` |
+| error | VP9_FIELD_COUNT | Not exactly 4 or 9 fields |
+| error | VP9_FIELD_FORMAT | Non-2-digit field after entry |
+| error | VP9_PROFILE_UNKNOWN | Profile not in {0, 1, 2, 3} |
+| error | VP9_LEVEL_UNKNOWN | Level value not in defined set |
+| error | VP9_DEPTH_INVALID | Bit depth not valid for profile or not in {8, 10, 12} |
+| error | VP9_CHROMA_INVALID | CC value not valid for profile (full form only) |
+| warning | VP9_DEPTH_12 | 12-bit (valid but rarely deployed) |
+| warning | VP9_CP_TC_MISMATCH | PQ/HLG transfer with BT.709 primaries |
+| info | VP9_SHORT_FORM | Using default optional values |
+| info | VP9_BITRATE_CAP | Max bitrate for resolved level |
+| info | VP9_COLOR_SPACE | Resolved color space summary |
+
+VP9 standalone display format:
+```
+  ┌─ vp09.02.50.10.01.09.16.09.00
+  │  Profile:  2 — Profile 2
+  │  Level:    5 (value=50)
+  │  Depth:    10-bit
+  │  Chroma:   4:2:0 (CC=01, colocated/top-left)
+  │  Color:    BT.2020 primaries, PQ transfer, BT.2020 NCL matrix
+  │  Range:    Limited (studio swing)
+  │  Bitrate:  ≤60 Mbps
+  └─
+```
+
+---
+
 ## hevc/ Module (2,059 lines)
 
 ### hevc/profiles.py (353 lines)
@@ -372,6 +491,7 @@ Returns `findings` list with structured `{severity, code, message}` dicts, lower
 Content ─→ resolve.py
               ├─ _resolve_hevc() ─→ hevc/profiles → hevc/levels → hvc1.X.Y.LZZZ.BB
               ├─ _resolve_av1()  ─→ av1/profiles  → av1/levels  → av01.P.LLT.DD.M.CCC.cp.tc.mc.F
+              ├─ _resolve_vp9()  ─→ vp9/profiles  → vp9/levels  → vp09.PP.LL.DD.CC.cp.tc.mc.FF
               └─ _resolve_dv()   ─→ dv/profiles   → dv/levels   → dvh1.PP.LL
 ```
 
@@ -379,6 +499,7 @@ Content ─→ resolve.py
 ```
 "hvc1.2.4.L153.B0"   ─→ decode_codec_string() ─→ decode_hevc()  ─→ {family:"hevc", findings:[], verdict:"VALID"}
 "av01.0.13M.10"       ─→ decode_codec_string() ─→ decode_av1()   ─→ {family:"av1", findings:[], verdict:"VALID"}
+"vp09.02.50.10"       ─→ decode_codec_string() ─→ decode_vp9()   ─→ {family:"vp9", findings:[], verdict:"VALID"}
 "dav1.10.09"          ─→ decode_codec_string() ─→ decode_dv()    ─→ {family:"dv", findings:[], verdict:"VALID"}
 ```
 Entry detection uses `CODEC_ENTRIES` from registry.py (no hardcoded if/elif).
@@ -396,41 +517,44 @@ Entry detection uses `CODEC_ENTRIES` from registry.py (no hardcoded if/elif).
 
 ### Dependency graph (imports)
 ```
-__init__.py ──→ models, resolve, hybrid, hevc.decode, av1.decode, dv.decode
+__init__.py ──→ models, resolve, hybrid, hevc.decode, av1.decode, vp9.decode, dv.decode
 __main__.py ──→ models, resolve, hybrid, hevc.decode, dv.decode, display, tests, registry
 registry.py ──→ (standalone, no imports)
-resolve.py  ──→ models, hevc.profiles, hevc.levels, av1.profiles, av1.levels, dv.profiles, dv.levels, hls
-hybrid.py   ──→ models, hevc.decode, av1.decode, av1.levels, dv.decode, dv.profiles, dv.levels, hls, registry
+resolve.py  ──→ models, hevc.profiles, hevc.levels, av1.profiles, av1.levels, vp9.profiles, vp9.levels, dv.profiles, dv.levels, hls
+hybrid.py   ──→ models, hevc.decode, av1.decode, vp9.decode, av1.levels, dv.decode, dv.profiles, dv.levels, hls, registry
 display.py  ──→ models, dv.levels
 
-hevc/       ──→ models (NEVER imports dv/ or av1/)
-av1/        ──→ models (NEVER imports hevc/ or dv/)
-dv/         ──→ models (NEVER imports hevc/ or av1/)
+hevc/       ──→ models (NEVER imports dv/, av1/, or vp9/)
+av1/        ──→ models (NEVER imports hevc/, dv/, or vp9/)
+vp9/        ──→ models (NEVER imports hevc/, av1/, or dv/)
+dv/         ──→ models (NEVER imports hevc/, av1/, or vp9/)
 ```
 
 ---
 
-## Test Coverage (118 tests)
+## Test Coverage (140 tests)
 
-### Resolve tests (47) — `--test`
-36 HEVC + 5 DV + 4 DV validation + 2 multi-codec
+### Resolve tests (55) — `--test`
+35 HEVC + 10 DV + 8 VP9 + 2 multi-codec/negative
 
-### Decode tests (33) — `--decode-test`
+### Decode tests (43) — `--decode-test`
 - 17 HEVC (profiles, tiers, levels, constraint bytes, RExt, SCC, unified)
 - 4 DV (P5, P9, P10, P20, P7 with layers)
-- **12 AV1:** valid short/full forms (P0/P1/P2), monochrome, level 31, errors (tier/mono/depth/brand)
+- 12 AV1: valid short/full forms (P0/P1/P2), monochrome, level 31, errors (tier/mono/depth/brand)
+- **10 VP9:** valid short/full forms (P0/P1/P2/P3), 12-bit, full range, errors (profile/depth/field count/chroma)
 
 ### Hybrid tests (17) — `--decode-test`
 - 11 HEVC+DV (level paradox, codec mismatch, valid pairings)
-- **6 AV1+DV:** valid pair, brands (db4h/db1p), errors (8-bit/P1/wrong entry)
+- 6 AV1+DV: valid pair, brands (db4h/db1p), errors (8-bit/P1/wrong entry)
 
 ### Brand tests (8) — `--decode-test`
 db4h, db1p, db2g, cdm4, unknown, no brand, HEVC+brand, hybrid+brand
 
-### Roundtrip tests (13) — `--decode-test`
+### Roundtrip tests (17) — `--decode-test`
 - 7 HEVC (resolve → decode → verify profile/level/tier)
 - 2 DV (resolve → decode → verify)
-- **4 AV1:** 4K30 PQ, 1080p60 SDR, 8K30, 4K60 12-bit P2
+- 4 AV1: 4K30 PQ, 1080p60 SDR, 8K30, 4K60 12-bit P2
+- **4 VP9:** 1080p30 SDR, 4K HDR10, 8K30, 4K 4:2:2 P3
 
 ---
 
@@ -447,6 +571,7 @@ db4h, db1p, db2g, cdm4, unknown, no brand, HEVC+brand, hybrid+brand
 | 6 | Decode test suite + roundtrips | ~5,000 | 79 |
 | 7 | HLS brands + package refactor | 5,648 | 96 |
 | 8 | AV1 + dav1 full integration | 6,993 | 118 |
-| **9** | **v1.0.0: Phase 0 audit, schema normalization, registry, dedup, structured notes** | **7,034** | **118** |
+| 9 | v1.0.0: Phase 0 audit, schema normalization, registry, dedup, structured notes | 7,034 | 118 |
+| **10** | **v1.1.0: VP9 codec family (4 profiles, 13 levels, decoder, resolver, display)** | **7,857** | **140** |
 
 **v1.0.0 released 2026-02-23** — https://github.com/NoFear0411/codec-resolve
