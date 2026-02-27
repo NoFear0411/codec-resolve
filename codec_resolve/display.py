@@ -661,6 +661,25 @@ def print_decoded(d: dict):
         else:
             print(f"  │  ╸ Verdict: ✓ VALID")
 
+    elif d["family"] == "vp8":
+        # ── VP8 (bare tag, fixed capabilities) ────────────────
+        print(f"  │")
+        print(f"  │  Codec:    {d.get('codec_name', 'VP8')}")
+        print(f"  │  Depth:    {d.get('bit_depth', 8)}-bit")
+        print(f"  │  Chroma:   {d.get('chroma', '4:2:0')}")
+
+        findings = d.get("findings", [])
+        errors = [f for f in findings if f["severity"] == "error"]
+
+        print(f"  │")
+        if errors:
+            for f in errors:
+                print(f"  │    ✗ [{f['code']}] {f['message']}")
+            print(f"  │  ╸ Verdict: ✗ INVALID — "
+                  f"{len(errors)} error{'s' if len(errors) != 1 else ''}")
+        else:
+            print(f"  │  ╸ Verdict: ✓ VALID")
+
     print(f"  │")
     print(f"  └─")
     print()

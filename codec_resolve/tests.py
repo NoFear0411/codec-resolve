@@ -1,5 +1,5 @@
 """
-Self-test suite: 55 resolve + 43 decode + 17 hybrid + 8 brand + 17 roundtrip = 140 tests.
+Self-test suite: 55 resolve + 46 decode + 17 hybrid + 8 brand + 17 roundtrip = 143 tests.
 """
 from .models import Content, Chroma, Transfer, Gamut, Scan, Tier, ConstraintStyle
 from .hevc.levels import resolve_hevc_level, resolve_hevc_tier
@@ -696,6 +696,27 @@ def decode_self_test() -> bool:
         ("vp09.01.40.08.01.01.01.01.00", [
             ("family", "vp9"),
             ("verdict", "INVALID"),
+        ]),
+
+        # ── VP8 ──────────────────────────────────────────────────
+
+        # VP8-D1: Bare tag → VALID
+        ("vp8", [
+            ("family", "vp8"),
+            ("codec_name", "VP8"),
+            ("bit_depth", 8),
+            ("chroma", "4:2:0"),
+            ("verdict", "valid"),
+        ]),
+        # VP8-D2: Unexpected dot fields → INVALID
+        ("vp8.00", [
+            ("family", "vp8"),
+            ("verdict", "INVALID"),
+        ]),
+        # VP8-D3: Wrong case still works (case-insensitive tag match)
+        ("VP8", [
+            ("family", "vp8"),
+            ("verdict", "valid"),
         ]),
     ]
 

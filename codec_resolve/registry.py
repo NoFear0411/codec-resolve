@@ -16,6 +16,8 @@ CODEC_ENTRIES = {
     "dvav": {"family": "dv",   "base_codec": "AVC",  "is_dv": True},
     "dva1": {"family": "dv",   "base_codec": "AVC",  "is_dv": True},
     "dav1": {"family": "dv",   "base_codec": "AV1",  "is_dv": True},
+    # Legacy (bare tag, no structured codec string)
+    "vp8":  {"family": "vp8",  "base_codec": "VP8",  "is_dv": False},
 }
 
 # CLI aliases: human-friendly names → list of entry points
@@ -26,6 +28,7 @@ ENTRY_ALIASES = {
     "dv":     ["dvhe", "dvh1"],
     "dv-avc": ["dvav", "dva1"],
     "dv-av1": ["dav1"],
+    "vp8":    ["vp8"],
     "all":    ["hvc1", "hev1", "av01", "vp09", "dvhe", "dvh1"],
 }
 

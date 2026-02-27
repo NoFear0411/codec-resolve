@@ -111,10 +111,11 @@ HELP_TEXT = """
    2. DECODE:    Map fields to human-readable spec definitions
    3. VALIDATE:  14 semantic checks on constraint flag combinations
 
- Accepts four input formats:
+ Accepts these input formats:
    HEVC standalone:    %(prog)s --decode hvc1.2.4.L153.B0
    AV1 standalone:     %(prog)s --decode av01.0.13M.10
    VP9 standalone:     %(prog)s --decode vp09.02.10.10.01.09.16.09.01
+   VP8 bare tag:       %(prog)s --decode vp8
    DV triplet:         %(prog)s --decode dvh1.08.06
    DV unified format:  %(prog)s --decode dvh1.08.06.H153.B0.00.00.00.00.00
    Hybrid pair:        %(prog)s --decode "hvc1.2.4.L153.B0, dvh1.08.06"
@@ -234,8 +235,8 @@ HELP_TEXT = """
 
 ─── TESTING ───────────────────────────────────────────────────────
 
- %(prog)s --test                  47 forward-resolve tests
- %(prog)s --decode-test           21 decode + 11 hybrid + 9 roundtrip tests
+ %(prog)s --test                  55 forward-resolve tests
+ %(prog)s --decode-test           46 decode + 17 hybrid + 8 brand + 17 roundtrip tests
 
 ─── EXAMPLES ──────────────────────────────────────────────────────
 
