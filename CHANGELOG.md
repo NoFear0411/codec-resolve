@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.2.0
+
+VP8 codec family support. License changed to AGPL-3.0.
+
+### Features
+- **VP8 reverse decode:** Validates bare `vp8` tag (case-insensitive, rejects suffixed forms like `vp08`)
+- **VP8 display output:** Standalone pretty-print with fixed VP8 characteristics (8-bit, 4:2:0)
+
+### Codecs
+- **VP8:** Single bare tag — no profiles, no levels, no parameters (codec predates parameterized strings)
+
+### Integration
+- Registry: `vp8` entry in `CODEC_ENTRIES`
+- Hybrid routing: `decode_codec_string()` dispatches VP8 automatically
+- CLI: `--decode "vp8"` for reverse decode
+- Public API: `decode_vp8()` exported from `codec_resolve`
+
+### Changed
+- **License:** LGPL-3.0 → AGPL-3.0-or-later (aligns with CodecProbe)
+
+### Tests
+- 143 tests: 55 forward-resolve, 46 decode (+3 VP8), 17 hybrid, 8 brand, 17 roundtrip
+
+---
+
 ## 1.1.0
 
 VP9 codec family support.

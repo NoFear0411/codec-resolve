@@ -1,7 +1,7 @@
 """
 HEVC + AV1 + VP9 + VP8 + Dolby Vision Codec String Resolver & Validator
 ========================================================================
-143 tests · zero external dependencies
+143 tests · zero dependencies · AGPL-3.0
 
 Bidirectional: resolve ↔ decode ↔ validate ↔ hybrid.
 
