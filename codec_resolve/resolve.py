@@ -33,7 +33,7 @@ def resolve(content: Content, codecs: List[str]) -> List[ResolvedCodec]:
     for codec in codecs:
         if codec in ("hvc1", "hev1"):
             results.append(_resolve_hevc(content, codec))
-        elif codec in ("dvhe", "dvh1", "dvav", "dva1", "dav1"):
+        elif codec in ("dvhe", "dvh1", "dvav", "dva1", "dav1", "dvc1", "dvhp"):
             results.append(_resolve_dv(content, codec))
         elif codec == "av01":
             results.append(_resolve_av1(content, codec))
@@ -41,7 +41,7 @@ def resolve(content: Content, codecs: List[str]) -> List[ResolvedCodec]:
             results.append(_resolve_vp9(content, codec))
         else:
             raise ValueError(f"Unknown codec entry: '{codec}'. "
-                             f"Use: hvc1, hev1, av01, vp09, dvhe, dvh1, dvav, dva1, dav1")
+                             f"Use: hvc1, hev1, av01, vp09, dvhe, dvh1, dvav, dva1, dav1, dvc1, dvhp")
     return results
 
 

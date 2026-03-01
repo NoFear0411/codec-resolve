@@ -120,13 +120,31 @@ def decode_dv(codec_string: str) -> dict:
         "dva1": "AVC base layer, RPU out-of-band (sample description — HLS/MP4)",
         "dvav": "AVC base layer, RPU in-band (NAL units)",
         "dav1": "AV1 base layer, RPU out-of-band (sample description)",
+        # Non-standard entries (Profile 5 only)
+        "dvc1": "HEVC base layer, deprecated pre-standard DV container tag",
+        "dvhp": "HEVC base layer, OMAF/VR DV container tag (ISO/IEC 23090-2)",
     }
     if dv_entry not in entry_info:
         raise ValueError(f"Unknown DV entry: '{dv_entry}'. "
                          f"Expected: {', '.join(entry_info.keys())}")
+
+    # Warn on non-standard entries
+    _NONSTANDARD_ENTRIES = {
+        "dvc1": ("Deprecated pre-standard DV FourCC. "
+                 "Use dvhe (in-band) or dvh1 (out-of-band) instead."),
+        "dvhp": ("OMAF/VR DV FourCC (ISO/IEC 23090-2). "
+                 "Not part of standard ETSI TS 103 572 DV signaling."),
+    }
+    if dv_entry in _NONSTANDARD_ENTRIES:
+        findings.append({
+            "severity": "warning",
+            "code": "DV_NONSTANDARD_ENTRY",
+            "message": f"Non-standard entry '{dv_entry}': "
+                       f"{_NONSTANDARD_ENTRIES[dv_entry]}",
+        })
     result["entry"] = dv_entry
     result["entry_meaning"] = entry_info[dv_entry]
-    if dv_entry in ("dvhe", "dvh1"):
+    if dv_entry in ("dvhe", "dvh1", "dvc1", "dvhp"):
         result["base_layer_codec"] = "HEVC"
     elif dv_entry in ("dva1", "dvav"):
         result["base_layer_codec"] = "AVC"
@@ -268,7 +286,7 @@ def decode_dv(codec_string: str) -> dict:
     # replacing the DV entry with the corresponding HEVC entry:
     #   dvh1 → hvc1 (both out-of-band / sample description)
     #   dvhe → hev1 (both in-band / NAL units)
-    if len(parts) > 3 and dv_entry in ("dvh1", "dvhe"):
+    if len(parts) > 3 and dv_entry in ("dvh1", "dvhe", "dvc1", "dvhp"):
         # Map DV entry → HEVC entry per MPEG-4 Part 15
         hevc_entry = "hvc1" if dv_entry == "dvhe" else "hev1"
 

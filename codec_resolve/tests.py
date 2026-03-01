@@ -1,5 +1,5 @@
 """
-Self-test suite: 55 resolve + 46 decode + 17 hybrid + 8 brand + 17 roundtrip = 143 tests.
+Self-test suite: 55 resolve + 48 decode + 17 hybrid + 8 brand + 17 roundtrip = 145 tests.
 """
 from .models import Content, Chroma, Transfer, Gamut, Scan, Tier, ConstraintStyle
 from .hevc.levels import resolve_hevc_level, resolve_hevc_tier
@@ -441,6 +441,23 @@ def decode_self_test() -> bool:
             ("enhancement_layer", True),
             ("status", "Legacy (phased out)"),
             ("colorspace", "IPTPQc2 (proprietary)"),
+        ]),
+        # Non-standard DV entries (Profile 5 only)
+        ("dvc1.05.06", [
+            ("family", "dv"),
+            ("entry", "dvc1"),
+            ("base_layer_codec", "HEVC"),
+            ("profile_idc", 5),
+            ("level_id", 6),
+            ("verdict", "VALID"),
+        ]),
+        ("dvhp.05.06", [
+            ("family", "dv"),
+            ("entry", "dvhp"),
+            ("base_layer_codec", "HEVC"),
+            ("profile_idc", 5),
+            ("level_id", 6),
+            ("verdict", "VALID"),
         ]),
         ("dvh1.08.03", [
             ("profile_idc", 8),

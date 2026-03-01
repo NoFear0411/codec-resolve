@@ -123,6 +123,7 @@ Codec entry point registry — single source of truth for FourCC → family disp
 | dvhe, dvh1 | dv | HEVC | Yes |
 | dvav, dva1 | dv | AVC | Yes |
 | dav1 | dv | AV1 | Yes |
+| dvc1, dvhp | dv | HEVC | Yes (non-standard) |
 
 ### hls.py (127 lines)
 HLS SUPPLEMENTAL-CODECS brand registry + shared brand stripping.

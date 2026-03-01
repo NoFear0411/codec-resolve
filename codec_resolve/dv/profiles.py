@@ -42,7 +42,7 @@ DV_COMPAT = {
         colorspace="IPTPQc2",
         layer_structure="BL+EL+RPU",
         fallback_type=None, fallback_format=None,
-        entries={"dvhe"},
+        entries={"dvhe", "dvc1", "dvhp"},
         status="Legacy (phased out by streaming services)",
         note="Closed-loop system: IPTPQc2 colorspace requires DV decoder. "
              "No standard HDR/SDR fallback. Colors will appear green/purple "
@@ -186,6 +186,9 @@ METADATA_DELIVERY = {
     "dva1": "out-of-band (sample description — HLS/MP4)",
     "dvav": "in-band (NAL units)",
     "dav1": "out-of-band (sample description)",
+    # Non-standard entries
+    "dvc1": "deprecated pre-standard container (delivery unknown)",
+    "dvhp": "OMAF/VR container (ISO/IEC 23090-2)",
 }
 
 

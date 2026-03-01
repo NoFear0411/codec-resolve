@@ -16,6 +16,9 @@ CODEC_ENTRIES = {
     "dvav": {"family": "dv",   "base_codec": "AVC",  "is_dv": True},
     "dva1": {"family": "dv",   "base_codec": "AVC",  "is_dv": True},
     "dav1": {"family": "dv",   "base_codec": "AV1",  "is_dv": True},
+    # Non-standard DV entries (edge cases, Profile 5 only)
+    "dvc1": {"family": "dv",   "base_codec": "HEVC", "is_dv": True},
+    "dvhp": {"family": "dv",   "base_codec": "HEVC", "is_dv": True},
     # Legacy (bare tag, no structured codec string)
     "vp8":  {"family": "vp8",  "base_codec": "VP8",  "is_dv": False},
 }
@@ -25,7 +28,7 @@ ENTRY_ALIASES = {
     "hevc":   ["hvc1", "hev1"],
     "av1":    ["av01"],
     "vp9":    ["vp09"],
-    "dv":     ["dvhe", "dvh1"],
+    "dv":     ["dvhe", "dvh1", "dvc1", "dvhp"],
     "dv-avc": ["dvav", "dva1"],
     "dv-av1": ["dav1"],
     "vp8":    ["vp8"],

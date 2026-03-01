@@ -59,6 +59,7 @@ def parse_codecs(s):
 #   Dolby Vision:  dvhe, dvh1 (HEVC base)
 #                  dvav, dva1 (AVC base)
 #                  dav1       (AV1 base)
+#                  dvc1, dvhp (non-standard HEVC, Profile 5 only)
 # =============================================================================
 
 
@@ -236,7 +237,7 @@ HELP_TEXT = """
 ─── TESTING ───────────────────────────────────────────────────────
 
  %(prog)s --test                  55 forward-resolve tests
- %(prog)s --decode-test           46 decode + 17 hybrid + 8 brand + 17 roundtrip tests
+ %(prog)s --decode-test           48 decode + 17 hybrid + 8 brand + 17 roundtrip tests
 
 ─── EXAMPLES ──────────────────────────────────────────────────────
 
