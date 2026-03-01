@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.2.1
+
+Non-standard Dolby Vision FourCC support.
+
+### Features
+- **dvc1 recognition:** Deprecated pre-standard DV container tag, decoded and validated as Profile 5 HEVC
+- **dvhp recognition:** OMAF/VR DV container tag (ISO/IEC 23090-2), decoded and validated as Profile 5 HEVC
+- **DV_NONSTANDARD_ENTRY warning:** Both entries decode with a warning explaining their non-standard nature
+
+### Integration
+- Registry: `dvc1` and `dvhp` entries in `CODEC_ENTRIES`, added to `dv` alias
+- Profile contracts: Both entries valid for Profile 5 only; `DV_ENTRY_MISMATCH` fires if used with other profiles
+- Forward resolve: `--codec dvc1` and `--codec dvhp` supported
+- Unified format: Embedded HEVC cross-validation works for both entries
+- METADATA_DELIVERY: Delivery descriptions for both entries
+
+### Tests
+- 145 tests: 55 forward-resolve, 48 decode (+2 non-standard DV), 17 hybrid, 8 brand, 17 roundtrip
+
+---
+
 ## 1.2.0
 
 VP8 codec family support. License changed to AGPL-3.0.
