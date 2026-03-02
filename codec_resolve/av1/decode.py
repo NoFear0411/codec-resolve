@@ -89,6 +89,7 @@ def decode_av1(codec_string: str) -> dict:
         return result
 
     result["entry"] = "av01"
+    result["entry_meaning"] = "AV1 codec configuration"
     result["codec_string"] = s
 
     # ── Step 3: Parse mandatory fields ─────────────────────────────
@@ -105,6 +106,7 @@ def decode_av1(codec_string: str) -> dict:
         return result
 
     result["seq_profile"] = seq_profile
+    result["profile_idc"] = seq_profile    # standard contract alias
 
     if seq_profile not in AV1_PROFILE_DEFS:
         findings.append({
@@ -158,6 +160,7 @@ def decode_av1(codec_string: str) -> dict:
         return result
 
     result["seq_level_idx"] = seq_level_idx
+    result["level_idc"] = seq_level_idx    # standard contract alias
     result["level_name"] = _level_name_from_idx(seq_level_idx)
 
     # Look up level in table
@@ -177,6 +180,14 @@ def decode_av1(codec_string: str) -> dict:
                        f"AV1 level. Defined: "
                        f"{sorted(AV1_LEVEL_LOOKUP.keys())} and 31",
         })
+
+    # Standard contract: max_resolution and max_fps from level
+    if level_obj:
+        result["max_resolution"] = f"{level_obj.max_h_size}x{level_obj.max_v_size}"
+        result["max_fps"] = level_obj.max_display_rate / level_obj.max_pic_size
+    else:
+        result["max_resolution"] = None
+        result["max_fps"] = None
 
     # DD = bitDepth (two-digit zero-padded)
     try:
@@ -290,6 +301,7 @@ def decode_av1(codec_string: str) -> dict:
         else:
             cap_mbps = (level_obj.high_mbps or level_obj.main_mbps) * bpf
         result["max_bitrate_mbps"] = cap_mbps
+        result["max_bitrate_kbps"] = int(cap_mbps * 1000)   # standard contract
         result["bitrate_profile_factor"] = bpf
         findings.append({
             "severity": "info",

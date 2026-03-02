@@ -1,5 +1,5 @@
 # CODEMAP.md — codec_resolve Package Reference
-## 8,890 lines · 168 tests · zero dependencies
+## 9,046 lines · 180 tests · zero dependencies
 ### Bidirectional: resolve ↔ decode ↔ validate ↔ hybrid
 ### Codec families: HEVC · AV1 · VP9 · AVC/H.264 · Dolby Vision (Profiles 5/7/8/9/10/20)
 
@@ -8,48 +8,79 @@
 ## Package Structure
 
 ```
-codec_resolve/                    8,890 lines total
+codec_resolve/                    9,046 lines total
 ├── __init__.py          45       Public API re-exports
-├── __main__.py         525       CLI: argparse, dispatch, help
+├── __main__.py         526       CLI: argparse, dispatch, help
 ├── models.py           284       Shared enums + dataclasses + H.273 color tables
 ├── registry.py          41       Codec entry point registry (FourCC → family)
 ├── hls.py              127       HLS brand registry + strip_hls_brands()
 ├── resolve.py          323       Master resolver (HEVC + AV1 + VP9 + AVC + DV)
 ├── hybrid.py           826       Cross-validation + routing (structured notes)
-├── display.py          748       Pretty-printers (standalone + hybrid)
-├── tests.py          1,243       168 tests
+├── display.py          679       Pretty-printers + shared helpers (standalone + hybrid)
+├── tests.py          1,350       180 tests
 ├── hevc/
 │   ├── __init__.py       1
 │   ├── profiles.py     353       13 HEVC profiles + constraint byte engine
 │   ├── levels.py       113       HEVC level table (1.0–6.2)
-│   └── decode.py     1,592       Full HEVC decoder + 14 semantic checks
+│   └── decode.py     1,648       Full HEVC decoder + 14 semantic checks + standard contract
 ├── av1/
 │   ├── __init__.py       0
 │   ├── profiles.py     127       3 AV1 profiles + resolver + string formatter
 │   ├── levels.py        98       14 AV1 levels (2.0–6.3) + tier rules
-│   └── decode.py       408       AV1 codec string parser + 9 validation checks
+│   └── decode.py       420       AV1 codec string parser + 9 validation checks
 ├── vp9/
 │   ├── __init__.py       0
 │   ├── profiles.py     133       4 VP9 profiles + resolver + string formatter
 │   ├── levels.py        92       13 VP9 levels (1–6.2) + resolver
-│   └── decode.py       315       VP9 codec string parser + 7 validation checks
+│   └── decode.py       326       VP9 codec string parser + 7 validation checks
 ├── avc/
 │   ├── __init__.py       0
 │   ├── profiles.py     205       8 AVC profiles + constraint flags + resolver
 │   ├── levels.py       104       20 AVC levels (1–6.2 + 1b) + MB-based resolver
-│   └── decode.py       281       AVC codec string parser + 11 validation codes
+│   └── decode.py       286       AVC codec string parser + 11 validation codes
 ├── vp8/
 │   ├── __init__.py       0
-│   └── decode.py        59       VP8 bare tag decoder
+│   └── decode.py        67       VP8 bare tag decoder + standard contract fields
 └── dv/
     ├── __init__.py       1
     ├── profiles.py     348       10 DV compat entries + METADATA_DELIVERY
     ├── levels.py       145       DV level table + HEVC mapping + AV1 mapping
-    └── decode.py       353       DV decoder (triplet/unified/brand)
+    └── decode.py       378       DV decoder (triplet/unified/brand) + standard contract
 ```
 
 **Architecture rule:** `hevc/`, `dv/`, `av1/`, `vp9/`, `avc/`, and `vp8/` are SIBLINGS — they never import each other.
 `hybrid.py` is the ONLY bridge between codec families.
+
+---
+
+## Standard Decoder Contract (v1.4.0+)
+
+Every `decode_*()` function MUST return these fields:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `family` | `str` | Lowercase: "hevc", "av1", "vp9", "avc", "dv", "vp8" |
+| `entry` | `str` | FourCC: "hvc1", "av01", "vp09", "avc1", "dvh1", "vp8" |
+| `entry_meaning` | `str` | Human description of entry tag |
+| `codec_string` | `str` | Parsed string (brands stripped) |
+| `codec_string_full` | `str` | Original string with HLS brands (if different, else = codec_string) |
+| `profile_idc` | `int` | Numeric profile identifier |
+| `profile_name` | `str` | Human name: "Main 10", "High", etc. |
+| `level_idc` | `int` | Raw level indicator from string |
+| `level_name` | `str\|None` | Human name: "5.1", "4", "1b" (None for VP8) |
+| `max_resolution` | `str\|None` | "3840x2160" (ASCII x, no labels) or None |
+| `max_fps` | `float\|None` | Derived max fps at max_resolution, or None |
+| `bit_depth` | `int` | 8, 10, 12, etc. |
+| `chroma` | `str\|Chroma` | "4:2:0", "4:2:2", "4:4:4", "Monochrome", or Chroma enum |
+| `max_bitrate_kbps` | `int\|None` | Always kbps internally |
+| `findings` | `list` | `[{severity, code, message, recommendation?}]` |
+| `verdict` | `str` | "VALID" or "INVALID" |
+
+Family-specific fields are allowed alongside these (HEVC's `stream_info`, `constraint_flags`, `tier`; AV1's color params; DV's `embedded_hevc`; etc.). The contract is additive — nothing gets removed.
+
+**Display helpers** in `display.py`: `_format_bitrate(kbps)`, `_print_validation(findings)`, `_print_verdict(findings)`, `_print_hls_brands(d)`.
+
+**Bitrate auto-scaling**: `_format_bitrate()` shows Mbps when ≥1000 kbps, kbps below. Exact decimals, no rounding. Examples: 14000 → "14 Mbps", 14500 → "14.5 Mbps", 768 → "768 kbps".
 
 ---
 
@@ -199,15 +230,19 @@ Notes are structured dicts: `{"severity": "pass"|"warning"|"info"|"note", "messa
 | H6 | Entry sync — dvh1/dvhe=HEVC, dav1=AV1, dvav/dva1=AVC |
 | H7+ | Tier bitrate, fallback, metadata delivery, layer structure |
 
-### display.py (748 lines)
-Pretty-printers for all output types. Owns emoji prefix mapping for structured notes via `_NOTE_PREFIX`.
+### display.py (679 lines)
+Pretty-printers for all output types. Shared helpers eliminate per-family duplication of validation, verdict, bitrate, and HLS brand rendering.
 
 | Line | Symbol | Description |
 |------|--------|-------------|
-| 8 | `print_results(content, results)` | Forward-resolve output with optional DV cross-validation |
-| 86 | `print_bare(results)` | Minimal output (--bare flag) |
-| 102 | `print_hybrid(result)` | Hybrid display — handles BOTH HEVC+DV and AV1+DV |
-| 250 | `print_decoded(d)` | Standalone decode display — HEVC, AV1, VP9, AVC, VP8, or DV family |
+| 8 | `_format_bitrate(kbps)` | Auto-scale: Mbps when ≥1000, kbps below, exact decimals |
+| 24 | `_print_validation(findings)` | Shared validation section renderer (errors/warnings/infos) |
+| 43 | `_print_verdict(findings)` | Shared verdict line renderer |
+| 57 | `_print_hls_brands(d)` | Shared HLS brand section renderer |
+| 72 | `print_results(content, results)` | Forward-resolve output with optional DV cross-validation |
+| 150 | `print_bare(results)` | Minimal output (--bare flag) |
+| 166 | `print_hybrid(result)` | Hybrid display — handles BOTH HEVC+DV and AV1+DV |
+| 314 | `print_decoded(d)` | Standalone decode display — HEVC, AV1, VP9, AVC, VP8, or DV family |
 
 Note rendering: `_NOTE_PREFIX = {"pass": "✓ ", "warning": "⚠ ", "info": "ℹ ", "note": ""}`
 
@@ -220,7 +255,7 @@ AV1 standalone display format:
   │  Chroma:   4:2:0 (subsampling 1,1 position 0)
   │  Color:    BT.2020 primaries, PQ transfer, BT.2020 NCL matrix
   │  Range:    Limited (studio swing)
-  │  Bitrate:  ≤40.0 Mbps (Main tier × P0 factor 1.0×)
+  │  Bitrate:  ≤40 Mbps (Main tier × P0 factor 1.0×)
   └─
 ```
 

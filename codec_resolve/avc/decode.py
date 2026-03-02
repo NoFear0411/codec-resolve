@@ -184,10 +184,15 @@ def decode_avc(codec_string: str) -> dict:
     if level_obj:
         result["level_name"] = level_obj.name
         result["level_max_resolution"] = level_obj.example
+        # Standard contract: dims only (strip "@fps", normalize to ASCII x)
+        result["max_resolution"] = level_obj.example.split("@")[0].replace("×", "x")
         result["level_max_fs"] = level_obj.max_fs
         result["level_max_mbps"] = level_obj.max_mbps
+        result["max_fps"] = level_obj.max_mbps / level_obj.max_fs
     else:
         result["level_name"] = f"Unknown ({level_idc})"
+        result["max_resolution"] = None
+        result["max_fps"] = None
         findings.append({
             "severity": "error",
             "code": "AVC_LEVEL_UNKNOWN",

@@ -85,6 +85,7 @@ def decode_vp9(codec_string: str) -> dict:
         return result
 
     result["entry"] = "vp09"
+    result["entry_meaning"] = "VP9 codec configuration"
     result["codec_string"] = s
 
     # ── Step 3: Validate field count ──────────────────────────────
@@ -119,7 +120,9 @@ def decode_vp9(codec_string: str) -> dict:
     bit_depth = int(parts[3])
 
     result["profile"] = profile
+    result["profile_idc"] = profile        # standard contract alias
     result["level_value"] = level_value
+    result["level_idc"] = level_value      # standard contract alias
     result["bit_depth"] = bit_depth
 
     # Profile lookup
@@ -146,6 +149,14 @@ def decode_vp9(codec_string: str) -> dict:
         result["level_name"] = f"Unknown ({level_value})"
     else:
         result["level_name"] = level_obj.name
+
+    # Standard contract: max_resolution and max_fps from level
+    if level_obj:
+        result["max_resolution"] = f"{level_obj.max_dim}x{level_obj.max_dim}"
+        result["max_fps"] = level_obj.max_sample_rate / level_obj.max_pic_size
+    else:
+        result["max_resolution"] = None
+        result["max_fps"] = None
 
     # ── Step 6: Parse optional fields or apply defaults ───────────
     has_optional = field_count == 9

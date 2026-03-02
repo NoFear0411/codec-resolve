@@ -6,6 +6,74 @@ from .models import Content, ResolvedCodec
 from .dv.levels import DV_LEVEL_LOOKUP
 
 
+# ─── Shared Display Helpers ────────────────────────────────────────────
+# Used by per-family print_decoded blocks and print_hybrid.
+
+
+def _format_bitrate(kbps):
+    """Format bitrate with auto-scaling. Exact decimals, no rounding."""
+    if kbps is None:
+        return None
+    if kbps >= 1000:
+        mbps = kbps / 1000
+        if mbps == int(mbps):
+            return f"{int(mbps)} Mbps"
+        s = f"{mbps:.3f}".rstrip("0")
+        return f"{s} Mbps"
+    return f"{kbps:,} kbps"
+
+
+def _print_validation(findings, prefix="  │"):
+    """Print the validation section from a findings list."""
+    errors = [f for f in findings if f["severity"] == "error"]
+    warnings = [f for f in findings if f["severity"] == "warning"]
+    infos = [f for f in findings if f["severity"] == "info"]
+    if not (errors or warnings or infos):
+        return
+    print(f"{prefix}")
+    print(f"{prefix}  Validation:")
+    for f in errors:
+        print(f"{prefix}    ✗ [{f['code']}] {f['message']}")
+        if f.get("recommendation"):
+            print(f"{prefix}      → {f['recommendation']}")
+    for f in warnings:
+        print(f"{prefix}    ⚠ [{f['code']}] {f['message']}")
+        if f.get("recommendation"):
+            print(f"{prefix}      → {f['recommendation']}")
+    for f in infos:
+        print(f"{prefix}    ℹ [{f['code']}] {f['message']}")
+        if f.get("recommendation"):
+            print(f"{prefix}      → {f['recommendation']}")
+
+
+def _print_verdict(findings, prefix="  │"):
+    """Print the verdict line from a findings list."""
+    errors = [f for f in findings if f["severity"] == "error"]
+    warnings = [f for f in findings if f["severity"] == "warning"]
+    print(f"{prefix}")
+    if errors:
+        print(f"{prefix}  ╸ Verdict: ✗ INVALID — "
+              f"{len(errors)} error{'s' if len(errors) != 1 else ''}"
+              f"{f', {len(warnings)} warning' + ('s' if len(warnings) != 1 else '') if warnings else ''}")
+    elif warnings:
+        print(f"{prefix}  ╸ Verdict: ⚠ VALID with "
+              f"{len(warnings)} warning{'s' if len(warnings) != 1 else ''}")
+    else:
+        print(f"{prefix}  ╸ Verdict: ✓ VALID")
+
+
+def _print_hls_brands(d, prefix="  │"):
+    """Print HLS brand section if present."""
+    if not d.get("hls_brands"):
+        return
+    print(f"{prefix}")
+    print(f"{prefix}  HLS Brand:")
+    for bi in d["hls_brands"]:
+        print(f"{prefix}    /{bi['brand']} — {bi['description']}")
+        if bi.get("video_range"):
+            print(f"{prefix}    VIDEO-RANGE: {bi['video_range']}")
+
+
 def print_results(content: Content, results: List[ResolvedCodec],
                   verbose: bool = True):
     """Pretty-print the resolved codec strings."""
@@ -287,48 +355,20 @@ def print_decoded(d: dict):
               f"{tc_name} transfer, {mc_name} matrix")
         print(f"  │  Range:    {d.get('video_range_name', '?')}")
 
-        if d.get('max_bitrate_mbps'):
+        if d.get('max_bitrate_kbps'):
+            br_label = _format_bitrate(d['max_bitrate_kbps'])
             bpf = d.get('bitrate_profile_factor', 1.0)
             tier_label = 'Main' if d['tier'] == 0 else 'High'
-            print(f"  │  Bitrate:  ≤{d['max_bitrate_mbps']:.1f} Mbps "
+            print(f"  │  Bitrate:  ≤{br_label} "
                   f"({tier_label} tier × P{d['seq_profile']} factor {bpf}×)")
 
         if not d.get('has_optional_fields'):
             print(f"  │")
             print(f"  │  ℹ Short form — optional color fields use defaults")
 
-        # ── Validation ───────────────────────────────────────
-        findings = d.get("findings", [])
-        errors = [f for f in findings if f["severity"] == "error"]
-        warnings = [f for f in findings if f["severity"] == "warning"]
-        infos = [f for f in findings if f["severity"] == "info"]
-
-        if errors or warnings or infos:
-            print(f"  │")
-            print(f"  │  Validation:")
-            for f in errors:
-                print(f"  │    ✗ [{f['code']}] {f['message']}")
-            for f in warnings:
-                print(f"  │    ⚠ [{f['code']}] {f['message']}")
-            for f in infos:
-                print(f"  │    ℹ [{f['code']}] {f['message']}")
-
-        # ── HLS Brands ───────────────────────────────────────
-        if d.get("hls_brands"):
-            print(f"  │")
-            print(f"  │  HLS Brand:")
-            for bi in d["hls_brands"]:
-                print(f"  │    /{bi['brand']} — {bi['description']}")
-
-        # ── Verdict ──────────────────────────────────────────
-        print(f"  │")
-        if errors:
-            print(f"  │  ╸ Verdict: ✗ INVALID — "
-                  f"{len(errors)} error{'s' if len(errors) != 1 else ''}")
-        elif warnings:
-            print(f"  │  ╸ Verdict: ⚠ VALID with warnings")
-        else:
-            print(f"  │  ╸ Verdict: ✓ VALID")
+        _print_validation(d.get("findings", []))
+        _print_hls_brands(d)
+        _print_verdict(d.get("findings", []))
 
     elif d["family"] == "hevc":
         # ── Profile ──────────────────────────────────────────
@@ -403,28 +443,7 @@ def print_decoded(d: dict):
             for warn in d["constraint_warnings"]:
                 print(f"  │  ⚠ Parse: {warn}")
 
-        # ── Contextual Validation ────────────────────────────
-        findings = d.get("findings", [])
-        errors = [f for f in findings if f["severity"] == "error"]
-        warnings = [f for f in findings if f["severity"] == "warning"]
-        infos = [f for f in findings if f["severity"] == "info"]
-
-        if errors or warnings or infos:
-            print(f"  │")
-            print(f"  │  Validation:")
-
-            for f in errors:
-                print(f"  │    ✗ [{f['code']}] {f['message']}")
-                if f.get("recommendation"):
-                    print(f"  │      → {f['recommendation']}")
-            for f in warnings:
-                print(f"  │    ⚠ [{f['code']}] {f['message']}")
-                if f.get("recommendation"):
-                    print(f"  │      → {f['recommendation']}")
-            for f in infos:
-                print(f"  │    ℹ [{f['code']}] {f['message']}")
-                if f.get("recommendation"):
-                    print(f"  │      → {f['recommendation']}")
+        _print_validation(d.get("findings", []))
 
         # ── Raw Constraint Bytes ─────────────────────────────
         n_present = d.get("constraint_bytes_present", 0)
@@ -447,26 +466,8 @@ def print_decoded(d: dict):
             if clear_flags:
                 print(f"  │    Clear (=0): {', '.join(clear_flags)}")
 
-        # ── HLS Brands (SUPPLEMENTAL-CODECS) ─────────────────
-        if d.get("hls_brands"):
-            print(f"  │")
-            print(f"  │  HLS Brand:")
-            for bi in d["hls_brands"]:
-                print(f"  │    /{bi['brand']} — {bi['description']}")
-                if bi.get("video_range"):
-                    print(f"  │    VIDEO-RANGE: {bi['video_range']}")
-
-        # ── Verdict ──────────────────────────────────────────
-        print(f"  │")
-        if errors:
-            print(f"  │  ╸ Verdict: ✗ INVALID — "
-                  f"{len(errors)} error{'s' if len(errors) != 1 else ''}"
-                  f"{f', {len(warnings)} warning' + ('s' if len(warnings) != 1 else '') if warnings else ''}")
-        elif warnings:
-            print(f"  │  ╸ Verdict: ⚠ VALID with warnings — "
-                  f"{len(warnings)} warning{'s' if len(warnings) != 1 else ''}")
-        else:
-            print(f"  │  ╸ Verdict: ✓ VALID")
+        _print_hls_brands(d)
+        _print_verdict(d.get("findings", []))
 
     elif d["family"] == "dv":
         print(f"  │  BL codec: {d.get('base_layer_codec', '—')}")
@@ -491,14 +492,13 @@ def print_decoded(d: dict):
             print(f"  │  EL:       {'Present (dual-layer)' if d['enhancement_layer'] else 'None (single-layer + RPU)'}")
         if "cross_compat" in d:
             print(f"  │  Cross:    {d['cross_compat']}")
-        # Structured findings (warnings/errors)
+        # Structured findings (inline, before status)
         dv_findings = d.get("findings", [])
-        dv_warnings = [f for f in dv_findings if f["severity"] == "warning"]
-        dv_errors = [f for f in dv_findings if f["severity"] == "error"]
-        for f in dv_errors:
-            print(f"  │  ✗ [{f['code']}] {f['message']}")
-        for f in dv_warnings:
-            print(f"  │  ⚠ [{f['code']}] {f['message']}")
+        for f in dv_findings:
+            if f["severity"] == "error":
+                print(f"  │  ✗ [{f['code']}] {f['message']}")
+            elif f["severity"] == "warning":
+                print(f"  │  ⚠ [{f['code']}] {f['message']}")
         if "status" in d:
             print(f"  │  Status:   {d['status']}")
 
@@ -528,16 +528,7 @@ def print_decoded(d: dict):
                     print(f"  │    {sev.get(bf['severity'], '?')} "
                           f"[{bf['code']}] {bf['message']}")
 
-        # ── DV Verdict ───────────────────────────────────────
-        print(f"  │")
-        if dv_errors:
-            print(f"  │  ╸ Verdict: ✗ INVALID — "
-                  f"{len(dv_errors)} error{'s' if len(dv_errors) != 1 else ''}")
-        elif dv_warnings:
-            print(f"  │  ╸ Verdict: ⚠ VALID with "
-                  f"{len(dv_warnings)} warning{'s' if len(dv_warnings) != 1 else ''}")
-        else:
-            print(f"  │  ╸ Verdict: ✓ VALID")
+        _print_verdict(dv_findings)
 
         # ── Unified Format: Embedded HEVC ──────────────────
         if d.get("unified_format"):
@@ -628,38 +619,15 @@ def print_decoded(d: dict):
         print(f"  │  Range:    {d.get('video_range_name', '?')}")
 
         if d.get('max_bitrate_kbps'):
-            mbps = d['max_bitrate_kbps'] / 1000
-            print(f"  │  Bitrate:  ≤{mbps:g} Mbps (no tiers)")
+            br_label = _format_bitrate(d['max_bitrate_kbps'])
+            print(f"  │  Bitrate:  ≤{br_label} (no tiers)")
 
         if not d.get('has_optional_fields'):
             print(f"  │")
             print(f"  │  ℹ Short form — optional color fields use defaults")
 
-        # ── Validation ─────────────────────────────────────────
-        findings = d.get("findings", [])
-        errors = [f for f in findings if f["severity"] == "error"]
-        warnings = [f for f in findings if f["severity"] == "warning"]
-        infos = [f for f in findings if f["severity"] == "info"]
-
-        if errors or warnings or infos:
-            print(f"  │")
-            print(f"  │  Validation:")
-            for f in errors:
-                print(f"  │    ✗ [{f['code']}] {f['message']}")
-            for f in warnings:
-                print(f"  │    ⚠ [{f['code']}] {f['message']}")
-            for f in infos:
-                print(f"  │    ℹ [{f['code']}] {f['message']}")
-
-        # ── Verdict ────────────────────────────────────────────
-        print(f"  │")
-        if errors:
-            print(f"  │  ╸ Verdict: ✗ INVALID — "
-                  f"{len(errors)} error{'s' if len(errors) != 1 else ''}")
-        elif warnings:
-            print(f"  │  ╸ Verdict: ⚠ VALID with warnings")
-        else:
-            print(f"  │  ╸ Verdict: ✓ VALID")
+        _print_validation(d.get("findings", []))
+        _print_verdict(d.get("findings", []))
 
     elif d["family"] == "avc":
         # ── AVC/H.264 Profile ──────────────────────────────────
@@ -687,40 +655,12 @@ def print_decoded(d: dict):
             print(f"  │  Flags:    none (0x{cb:02X})")
 
         if d.get("max_bitrate_kbps"):
-            print(f"  │  Bitrate:  ≤{d['max_bitrate_kbps']:,} kbps")
+            br_label = _format_bitrate(d['max_bitrate_kbps'])
+            print(f"  │  Bitrate:  ≤{br_label}")
 
-        # ── Validation ─────────────────────────────────────────
-        findings = d.get("findings", [])
-        errors = [f for f in findings if f["severity"] == "error"]
-        warnings = [f for f in findings if f["severity"] == "warning"]
-        infos = [f for f in findings if f["severity"] == "info"]
-
-        if errors or warnings or infos:
-            print(f"  │")
-            print(f"  │  Validation:")
-            for f in errors:
-                print(f"  │    ✗ [{f['code']}] {f['message']}")
-            for f in warnings:
-                print(f"  │    ⚠ [{f['code']}] {f['message']}")
-            for f in infos:
-                print(f"  │    ℹ [{f['code']}] {f['message']}")
-
-        # ── HLS Brands ─────────────────────────────────────────
-        if d.get("hls_brands"):
-            print(f"  │")
-            print(f"  │  HLS Brand:")
-            for bi in d["hls_brands"]:
-                print(f"  │    /{bi['brand']} — {bi['description']}")
-
-        # ── Verdict ────────────────────────────────────────────
-        print(f"  │")
-        if errors:
-            print(f"  │  ╸ Verdict: ✗ INVALID — "
-                  f"{len(errors)} error{'s' if len(errors) != 1 else ''}")
-        elif warnings:
-            print(f"  │  ╸ Verdict: ⚠ VALID with warnings")
-        else:
-            print(f"  │  ╸ Verdict: ✓ VALID")
+        _print_validation(d.get("findings", []))
+        _print_hls_brands(d)
+        _print_verdict(d.get("findings", []))
 
     elif d["family"] == "vp8":
         # ── VP8 (bare tag, fixed capabilities) ────────────────
@@ -729,17 +669,8 @@ def print_decoded(d: dict):
         print(f"  │  Depth:    {d.get('bit_depth', 8)}-bit")
         print(f"  │  Chroma:   {d.get('chroma', '4:2:0')}")
 
-        findings = d.get("findings", [])
-        errors = [f for f in findings if f["severity"] == "error"]
-
-        print(f"  │")
-        if errors:
-            for f in errors:
-                print(f"  │    ✗ [{f['code']}] {f['message']}")
-            print(f"  │  ╸ Verdict: ✗ INVALID — "
-                  f"{len(errors)} error{'s' if len(errors) != 1 else ''}")
-        else:
-            print(f"  │  ╸ Verdict: ✓ VALID")
+        _print_validation(d.get("findings", []))
+        _print_verdict(d.get("findings", []))
 
     print(f"  │")
     print(f"  └─")

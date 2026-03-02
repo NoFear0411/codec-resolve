@@ -50,10 +50,18 @@ def decode_vp8(codec_string: str) -> dict:
         return result
 
     result["entry"] = "vp8"
+    result["entry_meaning"] = "VP8 video codec (bare tag, no parameters)"
     result["codec_string"] = s
     result["codec_name"] = "VP8"
+    result["profile_idc"] = 0
+    result["profile_name"] = "VP8 (single profile)"
+    result["level_idc"] = 0
+    result["level_name"] = None
     result["bit_depth"] = 8
     result["chroma"] = "4:2:0"
-    result["verdict"] = "valid"
+    result["max_resolution"] = None
+    result["max_fps"] = None
+    result["max_bitrate_kbps"] = None
+    result["verdict"] = "VALID"
 
     return result

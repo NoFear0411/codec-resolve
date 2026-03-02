@@ -1,5 +1,5 @@
 """
-Self-test suite: 55 resolve + 48 decode + 17 hybrid + 8 brand + 17 roundtrip = 145 tests.
+Self-test suite: 61 resolve + 61 decode + 17 hybrid + 8 brand + 21 roundtrip + 12 contract = 180 tests.
 """
 from .models import Content, Chroma, Transfer, Gamut, Scan, Tier, ConstraintStyle
 from .hevc.levels import resolve_hevc_level, resolve_hevc_tier
@@ -10,7 +10,7 @@ from .dv.profiles import resolve_dv_profile, format_dv_string
 from .dv.decode import decode_dv
 from .resolve import resolve
 from .hybrid import validate_hybrid, decode_hybrid_string, decode_codec_string
-from .display import print_results, print_bare, print_hybrid, print_decoded
+from .display import print_results, print_bare, print_hybrid, print_decoded, _format_bitrate
 
 
 def self_test() -> bool:
@@ -848,7 +848,7 @@ def decode_self_test() -> bool:
             ("codec_name", "VP8"),
             ("bit_depth", 8),
             ("chroma", "4:2:0"),
-            ("verdict", "valid"),
+            ("verdict", "VALID"),
         ]),
         # VP8-D2: Unexpected dot fields → INVALID
         ("vp8.00", [
@@ -858,7 +858,7 @@ def decode_self_test() -> bool:
         # VP8-D3: Wrong case still works (case-insensitive tag match)
         ("VP8", [
             ("family", "vp8"),
-            ("verdict", "valid"),
+            ("verdict", "VALID"),
         ]),
     ]
 
@@ -1235,6 +1235,113 @@ def decode_self_test() -> bool:
     print(f"\nResults: {rt_passed}/{rt_total} roundtrip passed")
     return (passed == total and h_passed == h_total
             and b_passed == b_total and rt_passed == rt_total)
+
+
+# =============================================================================
+# STANDARD CONTRACT TESTS
+# =============================================================================
+
+# Every decoder must return these keys with correct types
+_STANDARD_CONTRACT_KEYS = {
+    "family": str,
+    "entry": str,
+    "entry_meaning": str,
+    "codec_string": str,
+    "codec_string_full": str,
+    "profile_idc": int,
+    "profile_name": str,
+    "level_idc": int,
+    "bit_depth": int,
+    # chroma: str or Chroma enum — checked separately
+    "findings": list,
+    "verdict": str,
+}
+
+# These may be None for some families (VP8)
+_NULLABLE_CONTRACT_KEYS = {
+    "level_name": (str, type(None)),
+    "max_resolution": (str, type(None)),
+    "max_fps": (float, int, type(None)),
+    "max_bitrate_kbps": (int, type(None)),
+}
+
+
+def contract_self_test() -> bool:
+    """Test standard decoder contract across all 6 families."""
+    from .av1.decode import decode_av1
+    from .vp9.decode import decode_vp9
+    from .avc.decode import decode_avc
+    from .vp8.decode import decode_vp8
+
+    print("\n--- Standard contract tests ---\n")
+    passed = 0
+    total = 0
+
+    families = [
+        ("HEVC", decode_hevc, "hvc1.2.4.L153.B0"),
+        ("AV1",  decode_av1,  "av01.0.13M.10"),
+        ("VP9",  decode_vp9,  "vp09.02.51.10"),
+        ("AVC",  decode_avc,  "avc1.640028"),
+        ("DV",   decode_dv,   "dvh1.08.06"),
+        ("VP8",  decode_vp8,  "vp8"),
+    ]
+
+    for name, fn, codec_str in families:
+        total += 1
+        d = fn(codec_str)
+        issues = []
+
+        for key, expected_type in _STANDARD_CONTRACT_KEYS.items():
+            if key not in d:
+                issues.append(f"missing '{key}'")
+            elif not isinstance(d[key], expected_type):
+                issues.append(f"'{key}' type: expected {expected_type.__name__}, "
+                              f"got {type(d[key]).__name__}")
+
+        # chroma: must be present and stringifiable (str or Chroma enum)
+        if "chroma" not in d:
+            issues.append("missing 'chroma'")
+        elif not hasattr(d["chroma"], '__str__'):
+            issues.append(f"'chroma' not stringifiable: {type(d['chroma'])}")
+
+        for key, expected_types in _NULLABLE_CONTRACT_KEYS.items():
+            if key not in d:
+                issues.append(f"missing '{key}'")
+            elif not isinstance(d[key], expected_types):
+                issues.append(f"'{key}' type: expected {expected_types}, "
+                              f"got {type(d[key]).__name__}")
+
+        # Verdict must be "VALID" or "INVALID"
+        if d.get("verdict") not in ("VALID", "INVALID"):
+            issues.append(f"verdict='{d.get('verdict')}' not in {{VALID, INVALID}}")
+
+        if issues:
+            print(f"  ✗ {name}: {', '.join(issues)}")
+        else:
+            print(f"  ✓ {name}: all standard contract keys present")
+            passed += 1
+
+    # ── Bitrate formatter tests ─────────────────────────────────
+    br_tests = [
+        (768,    "768 kbps"),
+        (1000,   "1 Mbps"),
+        (14000,  "14 Mbps"),
+        (14500,  "14.5 Mbps"),
+        (25000,  "25 Mbps"),
+        (None,   None),
+    ]
+
+    for kbps, expected in br_tests:
+        total += 1
+        got = _format_bitrate(kbps)
+        if got == expected:
+            print(f"  ✓ _format_bitrate({kbps}) = {got!r}")
+            passed += 1
+        else:
+            print(f"  ✗ _format_bitrate({kbps}) = {got!r}, expected {expected!r}")
+
+    print(f"\nResults: {passed}/{total} contract tests passed")
+    return passed == total
 
 
 # =============================================================================

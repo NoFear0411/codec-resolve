@@ -1052,7 +1052,11 @@ def decode_hevc(codec_string: str) -> dict:
             f"Expected at least 4 dot-separated components: "
             f"<entry>.<profile>.<compat>.<tier+level>[.<constraints>...]")
 
-    result = {"codec_string": codec_string, "family": "hevc"}
+    findings = []
+    result = {"codec_string": codec_string, "family": "hevc", "findings": findings}
+
+    # Always set codec_string_full (before brand stripping alters codec_string)
+    result["codec_string_full"] = codec_string.strip()
 
     # Store HLS brand info if present
     if hls_brands:
@@ -1136,33 +1140,43 @@ def decode_hevc(codec_string: str) -> dict:
     lv = HEVC_LEVEL_LOOKUP.get(level_idc)
     if lv:
         result["level_number"] = lv.number
+        result["level_name"] = str(lv.number)          # standard contract alias
         result["level_max_luma_ps"] = lv.max_luma_ps
         result["level_max_luma_sps"] = lv.max_luma_sps
         result["level_max_bitrate"] = (lv.max_br_high if tier == 1
                                        else lv.max_br_main)
+        result["max_bitrate_kbps"] = result["level_max_bitrate"]  # standard contract
         result["level_max_bitrate_label"] = f"{result['level_max_bitrate']:,} kbps"
         result["level_has_high_tier"] = lv.has_high_tier
+        result["max_fps"] = lv.max_luma_sps / lv.max_luma_ps
 
         # Infer max resolution from luma_ps
-        # Common resolutions
+        # Common resolutions: (threshold, "WxH (label)")
         res_map = [
-            (36864,    "720×480 (480p)"),
-            (122880,   "720×576 (576p)"),
-            (245760,   "960×540"),
-            (552960,   "1280×720 (720p)"),
-            (983040,   "1280×768"),
-            (2228224,  "1920×1080 (1080p)"),
-            (8912896,  "3840×2160 (4K UHD)"),
-            (35651584, "7680×4320 (8K UHD)"),
+            (36864,    "720x480",  "720×480 (480p)"),
+            (122880,   "720x576",  "720×576 (576p)"),
+            (245760,   "960x540",  "960×540"),
+            (552960,   "1280x720", "1280×720 (720p)"),
+            (983040,   "1280x768", "1280×768"),
+            (2228224,  "1920x1080", "1920×1080 (1080p)"),
+            (8912896,  "3840x2160", "3840×2160 (4K UHD)"),
+            (35651584, "7680x4320", "7680×4320 (8K UHD)"),
         ]
         max_res = "unknown"
-        for ps, label in res_map:
+        max_res_dims = None
+        for ps, dims, label in res_map:
             if lv.max_luma_ps >= ps:
                 max_res = label
+                max_res_dims = dims
         result["level_max_resolution"] = max_res
+        result["max_resolution"] = max_res_dims       # standard contract (dims only)
     else:
         result["level_number"] = level_idc / 30.0
+        result["level_name"] = str(level_idc / 30.0)
         result["level_max_resolution"] = "unknown (non-standard level_idc)"
+        result["max_resolution"] = None
+        result["max_fps"] = None
+        result["max_bitrate_kbps"] = None
 
     # 5. Constraint bytes (optional, 0-6 bytes)
     #
@@ -1203,6 +1217,12 @@ def decode_hevc(codec_string: str) -> dict:
     result["constraint_bytes_present"] = n_actual
     if constraint_warnings:
         result["constraint_warnings"] = constraint_warnings
+        for cw in constraint_warnings:
+            findings.append({
+                "severity": "warning",
+                "code": "HEVC_CONSTRAINT_PARSE",
+                "message": cw,
+            })
 
     # Decode all flag bits
     all_flags = {}
@@ -1428,6 +1448,41 @@ def decode_hevc(codec_string: str) -> dict:
 
     result["stream_info"] = stream
 
+    # ── Standard contract: top-level bit_depth and chroma ─────────
+    # Extract numeric depth from the descriptive stream_info string.
+    # "≤10-bit" → 10, "≤8-bit" → 8, "≤16-bit (...)" → 16
+    _depth_str = stream.get("bit_depth", "")
+    _depth_num = None
+    for _d in (8, 10, 12, 14, 16):
+        if f"{_d}-bit" in _depth_str:
+            _depth_num = _d
+            break
+    if _depth_num is None and pdef:
+        _depth_num = pdef.max_depth
+    result["bit_depth"] = _depth_num or 8
+
+    # Extract simplified chroma from stream_info
+    _chroma_str = stream.get("chroma", "")
+    if "Mono" in _chroma_str:
+        result["chroma"] = "Monochrome"
+    elif "4:4:4" in _chroma_str:
+        result["chroma"] = "4:4:4"
+    elif "4:2:2" in _chroma_str:
+        result["chroma"] = "4:2:2"
+    elif "4:2:0" in _chroma_str:
+        result["chroma"] = "4:2:0"
+    elif pdef:
+        # Fallback to profile's max chroma
+        from ..models import Chroma as _Ch
+        if _Ch.YUV444 in pdef.chroma_set:
+            result["chroma"] = "4:4:4"
+        elif _Ch.YUV422 in pdef.chroma_set:
+            result["chroma"] = "4:2:2"
+        else:
+            result["chroma"] = "4:2:0"
+    else:
+        result["chroma"] = "4:2:0"
+
     # Keep legacy content_characteristics for backward compat with tests
     chars = {
         "scan": stream["scan"],
@@ -1520,6 +1575,7 @@ def decode_hevc(codec_string: str) -> dict:
             base_br = result.get("level_max_bitrate", 0)
             rext_br = int(base_br * rext_factor)
             result["level_max_bitrate"] = rext_br
+            result["max_bitrate_kbps"] = rext_br  # update standard contract too
             tier_label = "High" if tier == 1 else "Main"
             # Show the decomposition for transparency
             if chroma_factor > 1.0 and depth_factor > 1.0:
@@ -1544,7 +1600,7 @@ def decode_hevc(codec_string: str) -> dict:
         # Main/Main 10 — they cannot decode RExt streams even if
         # the codec string is technically valid.
         if rext_factor > 1.0 or chroma_factor > 1.0 or depth_factor > 1.0:
-            result.setdefault("findings", []).append({
+            findings.append({
                 "severity": "warning",
                 "code": "REXT_CONSUMER_UNSUPPORTED",
                 "message": (
@@ -1563,10 +1619,10 @@ def decode_hevc(codec_string: str) -> dict:
     # ── Contextual Validation (Conflict Resolver) ──
     # Analyzes semantic relationships between flags to find
     # contradictions, unexpected configurations, and workflow hints.
-    findings = _validate_constraint_context(result)
-    if findings:
-        existing = result.get("findings", [])
-        result["findings"] = findings + existing
+    ctx_findings = _validate_constraint_context(result)
+    if ctx_findings:
+        # Prepend contextual findings before any existing ones
+        result["findings"] = ctx_findings + findings
 
     # ── Profile Override Annotation ──
     # When Profile 1/2/3 has impossible constraint claims, the stream_info

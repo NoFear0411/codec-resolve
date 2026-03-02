@@ -11,7 +11,7 @@ from .hybrid import decode_hybrid_string, decode_codec_string
 from .hevc.decode import decode_hevc
 from .dv.decode import decode_dv
 from .display import print_results, print_bare, print_hybrid, print_decoded
-from .tests import self_test, decode_self_test
+from .tests import self_test, decode_self_test, contract_self_test
 from .registry import ALL_ENTRIES, ENTRY_ALIASES, CODEC_ENTRIES
 
 RESOLUTION_PRESETS = {
@@ -357,6 +357,7 @@ def main():
         sys.exit(0 if success else 1)
     if "--decode-test" in sys.argv:
         success = decode_self_test()
+        success = contract_self_test() and success
         sys.exit(0 if success else 1)
     if "--decode" in sys.argv:
         idx = sys.argv.index("--decode")

@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.4.0
+
+Standardized decoder output across all 6 codec families.
+
+### Standard Decoder Contract
+
+Every `decode_*()` function now returns a consistent set of fields: `family`, `entry`, `entry_meaning`, `codec_string`, `codec_string_full`, `profile_idc`, `profile_name`, `level_idc`, `level_name`, `max_resolution`, `max_fps`, `bit_depth`, `chroma`, `max_bitrate_kbps`, `findings`, `verdict`. Family-specific fields are preserved alongside these.
+
+### HEVC Migration
+
+- **findings list:** Top-level `findings` list initialized early, constraint warnings bridged into it
+- **Standard fields:** Added `level_name`, `max_fps`, `max_bitrate_kbps`, `max_resolution` (ASCII x, no labels)
+- **Top-level depth/chroma:** Extracted `bit_depth` (int) and `chroma` (str) from stream_info strings
+- **codec_string_full:** Always set (was only set when HLS brands present)
+
+### Missing Fields Added
+
+- **AV1:** `entry_meaning`, `profile_idc`, `level_idc`, `max_resolution`, `max_fps`, `max_bitrate_kbps`
+- **VP9:** `entry_meaning`, `profile_idc`, `level_idc`, `max_resolution`, `max_fps`
+- **AVC:** `max_fps`, `max_resolution` (fps suffix stripped, Unicode x normalized to ASCII)
+- **DV:** `codec_string_full`, `level_idc`, `level_name`, `max_fps`, `max_bitrate_kbps`, `max_resolution`, `bit_depth` (int), `chroma`
+- **VP8:** `entry_meaning`, `profile_idc`, `profile_name`, `level_idc`, `level_name`, `max_resolution`, `max_fps`, `max_bitrate_kbps`, verdict uppercase
+
+### Display Helpers
+
+- **`_format_bitrate(kbps)`:** Auto-scale Mbps/kbps with exact decimals, no rounding
+- **`_print_validation(findings)`:** Shared validation section renderer replaces 6 inline copies
+- **`_print_verdict(findings)`:** Shared verdict line renderer replaces 6 inline copies
+- **`_print_hls_brands(d)`:** Shared HLS brand renderer replaces 3 inline copies
+- Net display.py reduction: 748 → 679 lines
+
+### Tests
+
+- 180 tests: 61 resolve, 61 decode, 17 hybrid, 8 brand, 21 roundtrip, 12 contract
+- **Contract tests:** 6 per-family tests verify all standard fields present with correct types
+- **Bitrate formatter tests:** 6 edge cases (None, <1000, exact 1000, whole Mbps, fractional Mbps, large)
+
+---
+
 ## 1.3.0
 
 AVC/H.264 codec family support.

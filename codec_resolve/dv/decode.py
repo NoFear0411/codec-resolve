@@ -106,6 +106,9 @@ def decode_dv(codec_string: str) -> dict:
     findings = []
     result = {"codec_string": codec_string, "family": "dv", "findings": findings}
 
+    # Always set codec_string_full
+    result["codec_string_full"] = codec_string.strip()
+
     # Store HLS brand info if present
     if hls_brands:
         result["hls_brands"] = hls_brands
@@ -203,6 +206,20 @@ def decode_dv(codec_string: str) -> dict:
     else:
         result["profile_name"] = f"Unknown profile {profile_idc}"
 
+    # Standard contract: ensure numeric bit_depth and chroma
+    # DV stores descriptive strings like "10-bit" or "12-bit (10+2)"
+    _bd = result.get("bit_depth")
+    if isinstance(_bd, str):
+        # Extract first integer from "10-bit" or "12-bit (10+2)"
+        import re
+        _m = re.match(r"(\d+)", _bd)
+        result["bit_depth"] = int(_m.group(1)) if _m else 10
+    elif _bd is None:
+        # Profile 8 doesn't set bit_depth directly — all sub-profiles are 10-bit
+        result["bit_depth"] = 10
+    if "chroma" not in result:
+        result["chroma"] = "4:2:0"
+
     # Validate entry matches profile's expected base codec
     compat = DV_COMPAT.get(_dv_sub_key(profile_idc))
     if not compat:
@@ -219,19 +236,27 @@ def decode_dv(codec_string: str) -> dict:
     # 3. Level
     level_id = int(dv_level_str)
     result["level_id"] = level_id
+    result["level_idc"] = level_id         # standard contract alias
+    result["level_name"] = str(level_id)   # standard contract alias
 
     lv = DV_LEVEL_LOOKUP.get(level_id)
     if lv:
         result["level_max_width"] = lv.max_width
         result["level_max_height"] = lv.max_height
         result["level_max_fps"] = lv.max_fps
+        result["max_fps"] = lv.max_fps                            # standard contract
         result["level_max_pps"] = lv.max_pps
         result["level_max_bitrate_main"] = f"{lv.max_br_main:,} kbps"
+        result["max_bitrate_kbps"] = lv.max_br_main               # standard contract
         if lv.max_br_high > 0:
             result["level_max_bitrate_high"] = f"{lv.max_br_high:,} kbps"
         result["level_max_resolution"] = f"{lv.max_width}×{lv.max_height}@{lv.max_fps:g}fps"
+        result["max_resolution"] = f"{lv.max_width}x{lv.max_height}"  # standard contract
     else:
         result["level_max_resolution"] = f"Unknown (level {level_id})"
+        result["max_resolution"] = None
+        result["max_fps"] = None
+        result["max_bitrate_kbps"] = None
 
     # ── 3b. HLS Brand Inference (RFC 8216bis §4.4.6.2) ──────────
     # If ISOBMFF brands are present (from SUPPLEMENTAL-CODECS), use
