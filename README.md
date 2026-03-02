@@ -1,6 +1,6 @@
 # codec_resolve
 
-Resolve, decode, and validate video codec strings for HEVC, AV1, and Dolby Vision.
+Resolve, decode, and validate video codec strings for HEVC, AV1, VP9, VP8, and Dolby Vision.
 
 ## What it does
 
@@ -41,6 +41,8 @@ python -m codec_resolve --codec av01 -r 4k --fps 60 -d 10 -c 420 -t pq -g bt2020
 # Single codecs
 ./codec-resolve --decode "hvc1.2.4.L153.B0"
 ./codec-resolve --decode "av01.0.13M.10.0.110.09.16.09.0"
+./codec-resolve --decode "vp09.02.50.10.01.09.16.09.00"
+./codec-resolve --decode "vp8"
 ./codec-resolve --decode "dvh1.08.06"
 ./codec-resolve --decode "dav1.10.09/db4h"
 
@@ -55,6 +57,7 @@ python -m codec_resolve --codec av01 -r 4k --fps 60 -d 10 -c 420 -t pq -g bt2020
 ./codec-resolve --codec hvc1 -r 1080p --fps 60 -d 8 -c 420 -t sdr -g bt709
 ./codec-resolve --codec hvc1 -r 4k --fps 30 -d 10 -c 420 -t pq -g bt2020
 ./codec-resolve --codec av01 -r 4k --fps 60 -d 12 -c 422 -t pq -g bt2020
+./codec-resolve --codec vp09 -r 4k --fps 30 -d 10 -c 420 -t pq -g bt2020
 ./codec-resolve --codec dvh1 -r 4k --fps 24 -d 10 -c 420 -t pq -g bt2020
 ./codec-resolve --codec all -r 4k --fps 30 -d 10 -c 420 -t pq -g bt2020
 ```
@@ -160,6 +163,48 @@ results[0].codec_string  # "av01.0.13M.10.0.110.09.16.09.0"
   └─
 ```
 
+### Decode: VP9
+`./codec-resolve --decode "vp09.02.50.10.01.09.16.09.00"`
+```
+  ┌─ vp09.02.50.10.01.09.16.09.00
+  │
+  │  Family:   vp9
+  │  Entry:    vp09
+  │
+  │  Profile:  2 — Profile 2
+  │  Level:    5 (value=50)
+  │  Depth:    10-bit
+  │  Chroma:   4:2:0 (CC 01: Colocated (top-left))
+  │  Color:    BT.2020 / BT.2100 primaries, PQ (SMPTE ST 2084) transfer, BT.2020 NCL matrix
+  │  Range:    Limited (studio swing)
+  │  Bitrate:  ≤60 Mbps (no tiers)
+  │
+  │  Validation:
+  │    ℹ [VP9_COLOR_SPACE] Color: BT.2020 / BT.2100 / PQ (SMPTE ST 2084) / BT.2020 NCL / Limited (studio swing)
+  │    ℹ [VP9_BITRATE_CAP] Max bitrate for Level 5: 60 Mbps (60000 kbps)
+  │
+  │  ╸ Verdict: ✓ VALID
+  │
+  └─
+```
+
+### Decode: VP8
+`./codec-resolve --decode "vp8"`
+```
+  ┌─ vp8
+  │
+  │  Family:   vp8
+  │  Entry:    vp8
+  │
+  │  Codec:    VP8
+  │  Depth:    8-bit
+  │  Chroma:   4:2:0
+  │
+  │  ╸ Verdict: ✓ VALID
+  │
+  └─
+```
+
 ### Decode: Dolby Vision
 `./codec-resolve --decode "dvh1.08.06"`
 ```
@@ -239,6 +284,8 @@ results[0].codec_string  # "av01.0.13M.10.0.110.09.16.09.0"
 |--------|---------|----------|--------|
 | HEVC | `hvc1`, `hev1` | 13 (Main through MVRExt, SCC, HT, Scalable, Multiview) | 1.0–6.2 |
 | AV1 | `av01` | Main, High, Professional | 2.0–6.3 |
+| VP9 | `vp09` | Profiles 0–3 (bit-depth × chroma axes) | 1–6.2 |
+| VP8 | `vp8` | None (bare tag, 8-bit 4:2:0 only) | None |
 | Dolby Vision | `dvhe`, `dvh1`, `dvav`, `dva1`, `dav1` | P5, P7, P8 (8.1/8.2/8.4), P9, P10, P20 | 13 levels |
 
 ### Hybrid validation checks
@@ -259,12 +306,12 @@ results[0].codec_string  # "av01.0.13M.10.0.110.09.16.09.0"
 
 ## Contributing
 
-Currently covers HEVC, AV1, and Dolby Vision. Planned additions:
+Currently covers HEVC, AV1, VP9, VP8, and Dolby Vision. Planned additions:
 
-**Video:** AVC/H.264 (`avc1.PPCCLL`), VP9 (`vp09.PP.LL.DD`)
+**Video:** AVC/H.264 (`avc1.PPCCLL`), VVC/H.266 (`vvc1`), Legacy (Theora, H.263, MPEG-4 Part 2)
 **Audio:** AAC (`mp4a.40.XX`), AC-3, E-AC-3 (`ec-3`), Opus, FLAC, DTS
 
-Each codec family lives in its own subdirectory (`hevc/`, `av1/`, `dv/`). They never import each other — `hybrid.py` is the only bridge. Adding a new codec means:
+Each codec family lives in its own subdirectory (`hevc/`, `av1/`, `vp9/`, `vp8/`, `dv/`). They never import each other — `hybrid.py` is the only bridge. Adding a new codec means:
 
 1. Create a directory (e.g. `avc/`) with `profiles.py`, `levels.py`, `decode.py`
 2. Add entry points to `registry.py`
@@ -289,9 +336,11 @@ codec-resolve/
 │   ├── hybrid.py              Cross-validation engine
 │   ├── display.py             Terminal formatters
 │   ├── hls.py                 HLS brand registry
-│   ├── tests.py               118 tests
+│   ├── tests.py               145 tests
 │   ├── hevc/                  HEVC profiles, levels, decoder
 │   ├── av1/                   AV1 profiles, levels, decoder
+│   ├── vp9/                   VP9 profiles, levels, decoder
+│   ├── vp8/                   VP8 decoder (bare tag)
 │   └── dv/                    DV profiles, levels, decoder
 ├── CHANGELOG.md
 └── LICENSE
@@ -305,6 +354,9 @@ codec-resolve/
 | ISO/IEC 14496-15 Annex E | HEVC codec string format |
 | AV1 Bitstream Spec Annex A | AV1 levels, tiers |
 | AV1-ISOBMFF v1.3.0 §5 | AV1 codec string format |
+| VP9 Bitstream Spec Annex A | VP9 levels |
+| VP Codec ISO Media File Format Binding §5 | VP9 codec string format |
+| RFC 6386 | VP8 bitstream specification |
 | ETSI TS 103 572 | DV profiles, levels, compatibility |
 | ITU-T H.273 | Color primaries, transfer characteristics, matrix coefficients |
 | Apple HLS Authoring Spec §3.1 | SUPPLEMENTAL-CODECS brands |
