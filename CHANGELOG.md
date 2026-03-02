@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.3.0
+
+AVC/H.264 codec family support.
+
+### Features
+- **AVC forward resolve:** Content parameters → `avc1.PPCCLL` / `avc3.PPCCLL` (uppercase hex triplet)
+- **AVC reverse decode:** Parse AVC codec strings with 11 validation codes (5 error, 1 warning, 5 info)
+- **AVC constraint flags:** Full constraint_set0–5 flag parsing with reserved_zero_2bits validation
+- **Derived profiles:** Constrained Baseline, Constrained High, Progressive High, Intra variants
+- **Level 1b:** Dual encoding support (level_idc=11+set3 and level_idc=9)
+- **Bitrate multipliers:** Per-profile MaxBR scaling (Baseline 1×, High 1.25×, High 10 3×, High 4:2:2/4:4:4 4×)
+
+### Codecs
+- **AVC:** 8 profiles (Baseline, Main, Extended, High, High 10, High 4:2:2, High 4:4:4 Predictive, CAVLC 4:4:4 Intra), 20 levels (1–6.2 + 1b), macroblock-based level selection
+
+### Integration
+- Registry: `avc1` and `avc3` entries + `avc` alias
+- Hybrid routing: `decode_codec_string()` dispatches AVC automatically
+- CLI: `--codec avc1`/`avc3` for forward resolve, `--decode "avc1.PPCCLL"` for reverse decode
+- Public API: `decode_avc()` exported from `codec_resolve`
+
+### Tests
+- 168 tests: 61 forward-resolve (+6), 61 decode (+13), 17 hybrid, 8 brand, 21 roundtrip (+4)
+
+---
+
 ## 1.2.1
 
 Non-standard Dolby Vision FourCC support.

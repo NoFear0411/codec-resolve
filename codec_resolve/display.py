@@ -661,6 +661,67 @@ def print_decoded(d: dict):
         else:
             print(f"  │  ╸ Verdict: ✓ VALID")
 
+    elif d["family"] == "avc":
+        # ── AVC/H.264 Profile ──────────────────────────────────
+        print(f"  │")
+        print(f"  │  Profile:  {d['profile_idc']} — {d['profile_name']}")
+        if d.get("constrained_profile"):
+            print(f"  │  Derived:  {d['constrained_profile']}")
+        print(f"  │  Level:    {d.get('level_name', '?')} "
+              f"(level_idc={d['level_idc']})")
+        if "level_max_resolution" in d:
+            print(f"  │  Max res:  {d['level_max_resolution']}")
+        if "bit_depth" in d:
+            print(f"  │  Depth:    {d['bit_depth']}-bit")
+        if "chroma" in d:
+            print(f"  │  Chroma:   {d['chroma']}")
+
+        # ── Constraints ────────────────────────────────────────
+        cb = d.get("constraint_byte", 0)
+        flags = d.get("constraint_flags", {})
+        set_flags = [name for name, val in flags.items() if val]
+        if set_flags:
+            print(f"  │  Flags:    {', '.join(set_flags)} "
+                  f"(0x{cb:02X})")
+        else:
+            print(f"  │  Flags:    none (0x{cb:02X})")
+
+        if d.get("max_bitrate_kbps"):
+            print(f"  │  Bitrate:  ≤{d['max_bitrate_kbps']:,} kbps")
+
+        # ── Validation ─────────────────────────────────────────
+        findings = d.get("findings", [])
+        errors = [f for f in findings if f["severity"] == "error"]
+        warnings = [f for f in findings if f["severity"] == "warning"]
+        infos = [f for f in findings if f["severity"] == "info"]
+
+        if errors or warnings or infos:
+            print(f"  │")
+            print(f"  │  Validation:")
+            for f in errors:
+                print(f"  │    ✗ [{f['code']}] {f['message']}")
+            for f in warnings:
+                print(f"  │    ⚠ [{f['code']}] {f['message']}")
+            for f in infos:
+                print(f"  │    ℹ [{f['code']}] {f['message']}")
+
+        # ── HLS Brands ─────────────────────────────────────────
+        if d.get("hls_brands"):
+            print(f"  │")
+            print(f"  │  HLS Brand:")
+            for bi in d["hls_brands"]:
+                print(f"  │    /{bi['brand']} — {bi['description']}")
+
+        # ── Verdict ────────────────────────────────────────────
+        print(f"  │")
+        if errors:
+            print(f"  │  ╸ Verdict: ✗ INVALID — "
+                  f"{len(errors)} error{'s' if len(errors) != 1 else ''}")
+        elif warnings:
+            print(f"  │  ╸ Verdict: ⚠ VALID with warnings")
+        else:
+            print(f"  │  ╸ Verdict: ✓ VALID")
+
     elif d["family"] == "vp8":
         # ── VP8 (bare tag, fixed capabilities) ────────────────
         print(f"  │")

@@ -21,6 +21,11 @@ from .vp9.profiles import (
     resolve_vp9_profile, format_vp9_string, VP9_PROFILE_DEFS,
     CC_FROM_CHROMA,
 )
+from .avc.levels import resolve_avc_level, BITRATE_PROFILE_MULTIPLIER
+from .avc.profiles import (
+    resolve_avc_profile, format_avc_string, default_constraint_byte,
+    AVC_PROFILE_DEFS,
+)
 
 
 def resolve(content: Content, codecs: List[str]) -> List[ResolvedCodec]:
@@ -39,9 +44,11 @@ def resolve(content: Content, codecs: List[str]) -> List[ResolvedCodec]:
             results.append(_resolve_av1(content, codec))
         elif codec == "vp09":
             results.append(_resolve_vp9(content, codec))
+        elif codec in ("avc1", "avc3"):
+            results.append(_resolve_avc(content, codec))
         else:
             raise ValueError(f"Unknown codec entry: '{codec}'. "
-                             f"Use: hvc1, hev1, av01, vp09, dvhe, dvh1, dvav, dva1, dav1, dvc1, dvhp")
+                             f"Use: hvc1, hev1, av01, vp09, avc1, avc3, dvhe, dvh1, dvav, dva1, dav1, dvc1, dvhp")
     return results
 
 
@@ -269,6 +276,43 @@ def _resolve_vp9(c: Content, entry: str) -> ResolvedCodec:
         family="vp9",
         profile_name=f"VP9 {pdef.name} (profile {profile_idx})",
         level_name=f"Level {level.name} (value={level.value})",
+        notes=notes,
+    )
+
+
+def _resolve_avc(c: Content, entry: str) -> ResolvedCodec:
+    """Resolve a single AVC/H.264 codec string."""
+    profile_idc = resolve_avc_profile(c)
+    level = resolve_avc_level(c)
+    constraint_byte = default_constraint_byte(profile_idc)
+    codec_str = format_avc_string(entry, profile_idc, constraint_byte, level.level_idc)
+
+    pdef = AVC_PROFILE_DEFS[profile_idc]
+    multiplier = BITRATE_PROFILE_MULTIPLIER.get(profile_idc, 1.0)
+    max_br = int(level.max_br_kbps * multiplier)
+
+    notes = []
+    notes.append(f"Max bitrate: {max_br:,} kbps "
+                 f"(Level {level.name} × {pdef.name} {multiplier}×)")
+    if profile_idc == 100:
+        notes.append("AVC High — consumer standard (Blu-ray, streaming)")
+    elif profile_idc == 110:
+        notes.append("AVC High 10 — 10-bit professional/broadcast")
+    elif profile_idc == 122:
+        notes.append("AVC High 4:2:2 — broadcast interlaced")
+    elif profile_idc == 244:
+        notes.append("AVC High 4:4:4 Predictive — studio mastering")
+    if entry == "avc3":
+        notes.append("avc3: parameter sets in band (each access unit)")
+    elif entry == "avc1":
+        notes.append("avc1: parameter sets out of band (sample description)")
+
+    return ResolvedCodec(
+        codec_string=codec_str,
+        entry=entry,
+        family="avc",
+        profile_name=f"AVC {pdef.name} (profile {profile_idc})",
+        level_name=f"Level {level.name} (level_idc={level.level_idc})",
         notes=notes,
     )
 

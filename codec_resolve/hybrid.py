@@ -18,6 +18,7 @@ from .av1.decode import decode_av1
 from .av1.levels import AV1_LEVEL_LOOKUP
 from .vp9.decode import decode_vp9
 from .vp8.decode import decode_vp8
+from .avc.decode import decode_avc
 
 
 def validate_hybrid(hevc_decoded: dict, dv_decoded: dict) -> dict:
@@ -740,6 +741,8 @@ def decode_codec_string(codec_string: str) -> dict:
         return decode_vp9(s)
     elif family == "vp8":
         return decode_vp8(s)
+    elif family == "avc":
+        return decode_avc(s)
     elif family == "dv":
         return decode_dv(s)
 

@@ -56,6 +56,7 @@ def parse_codecs(s):
 # Feed it a codec string → get back all decoded parameters.
 # Handles:
 #   HEVC:          hvc1, hev1
+#   AVC:           avc1, avc3
 #   Dolby Vision:  dvhe, dvh1 (HEVC base)
 #                  dvav, dva1 (AVC base)
 #                  dav1       (AV1 base)
@@ -75,7 +76,7 @@ HELP_TEXT = """
 
  REQUIRED    FLAG        VALUES
  ──────────  ──────────  ────────────────────────────────────
- codec       --codec     hvc1 hev1 av01 vp09 │ hevc av1 vp9 all
+ codec       --codec     hvc1 hev1 av01 vp09 avc1 avc3 │ hevc av1 vp9 avc all
                          dvhe dvh1 dvav dva1 dav1 │ dv dv-avc dv-av1
  resolution  -r          3840x2160 │ 4k 1080p 720p 8k ...
  framerate   --fps       23.976  29.97  59.94  60  120
@@ -116,6 +117,7 @@ HELP_TEXT = """
    HEVC standalone:    %(prog)s --decode hvc1.2.4.L153.B0
    AV1 standalone:     %(prog)s --decode av01.0.13M.10
    VP9 standalone:     %(prog)s --decode vp09.02.10.10.01.09.16.09.01
+   AVC standalone:     %(prog)s --decode avc1.640028
    VP8 bare tag:       %(prog)s --decode vp8
    DV triplet:         %(prog)s --decode dvh1.08.06
    DV unified format:  %(prog)s --decode dvh1.08.06.H153.B0.00.00.00.00.00
@@ -199,6 +201,26 @@ HELP_TEXT = """
      will produce green/purple distortion. No standard HDR/SDR fallback.
    ⚠ Profile 10 is AV1-based. Cannot be paired with HEVC base layer.
    ⚠ Profile 20 requires MV-HEVC (multiview) decoder for stereoscopic.
+
+─── AVC PROFILES (ITU-T H.264 §A.2) ────────────────────────────────
+
+   IDC   Hex   Name                      Depth  Chroma   BR ×  Common use
+   ────  ────  ────────────────────────  ─────  ───────  ────  ──────────────────
+    66   0x42  Baseline                  8      4:2:0    1×    Video calls (legacy)
+    77   0x4D  Main                      8      4:2:0    1×    DVB-T2, broadcast
+    88   0x58  Extended                  8      4:2:0    1×    Streaming (rare)
+   100   0x64  High                      8      4:2:0    1.25× Blu-ray, Netflix ★
+   110   0x6E  High 10                   10     4:2:0    3×    Professional
+   122   0x7A  High 4:2:2                10     4:2:2    4×    Broadcast interlaced
+   244   0xF4  High 4:4:4 Predictive     14     4:4:4    4×    Studio mastering
+
+   Derived profiles (constraint flags):
+     Constrained Baseline:  profile_idc=66, constraint_set1_flag=1
+     Constrained High:      profile_idc=100, constraint_set4_flag=1
+     Progressive High:      profile_idc=100, constraint_set4+5_flag=1
+
+   Codec string format: avc1.PPCCLL (6 hex chars)
+     PP = profile_idc, CC = constraint_flags, LL = level_idc
 
 ─── VALIDATION CODES ──────────────────────────────────────────────
 
@@ -389,7 +411,7 @@ def main():
 
     req = parser.add_argument_group("Content (all required)")
     req.add_argument("--codec", required=True,
-                     help="hvc1,hev1,av01,vp09,dvhe,dvh1,dvav,dva1,dav1 | hevc,av1,vp9,dv,dv-avc,dv-av1,all")
+                     help="hvc1,hev1,av01,vp09,avc1,avc3,dvhe,dvh1,dvav,dva1,dav1 | hevc,av1,vp9,avc,dv,dv-avc,dv-av1,all")
     req.add_argument("-r", "--resolution", required=True, metavar="WxH",
                      help="3840x2160 | 4k,1080p,720p,8k...")
     req.add_argument("--fps", required=True, type=float,

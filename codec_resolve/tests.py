@@ -320,6 +320,38 @@ def self_test() -> bool:
          "vp09", "vp09.00.60.08.01.01.01.01.00",
          "VP9 P0 8K30 SDR → L6 (value=60)"),
 
+        # === AVC ===
+
+        # AVC High, 1080p24 SDR → Level 4.0
+        (Content(1920, 1080, 23.976, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "avc1", "avc1.640028",
+         "AVC High 1080p24 → L4.0"),
+
+        # AVC High, 1080p60 → Level 4.2
+        (Content(1920, 1080, 59.94, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "avc1", "avc1.64002A",
+         "AVC High 1080p60 → L4.2"),
+
+        # AVC High, 720p30 → Level 3.1
+        (Content(1280, 720, 30.0, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "avc1", "avc1.64001F",
+         "AVC High 720p30 → L3.1"),
+
+        # AVC High 10, 4K30 → Level 5.1 (32,400 MBs > L5.0 MaxFS 22,080)
+        (Content(3840, 2160, 30.0, 10, Chroma.YUV420, Transfer.PQ, Gamut.BT2020),
+         "avc1", "avc1.6E0033",
+         "AVC High 10 4K30 → L5.1"),
+
+        # AVC High 4:2:2
+        (Content(1920, 1080, 30.0, 10, Chroma.YUV422, Transfer.PQ, Gamut.BT2020),
+         "avc1", "avc1.7A0028",
+         "AVC High 4:2:2 1080p30 → L4.0"),
+
+        # avc3 variant
+        (Content(1920, 1080, 23.976, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "avc3", "avc3.640028",
+         "avc3 variant 1080p24"),
+
         # === MULTI-CODEC ===
         # These are tested by calling resolve() with multiple codecs
     ]
@@ -715,6 +747,99 @@ def decode_self_test() -> bool:
             ("verdict", "INVALID"),
         ]),
 
+        # ══ AVC Decode Tests ════════════════════════════════════
+        # AVC-D1: High L4.0 — standard consumer
+        ("avc1.640028", [
+            ("family", "avc"),
+            ("entry", "avc1"),
+            ("profile_idc", 100),
+            ("profile_name", "High"),
+            ("constraint_byte", 0x00),
+            ("level_idc", 0x28),
+            ("level_name", "4"),
+            ("verdict", "VALID"),
+        ]),
+        # AVC-D2: Baseline L3.0
+        ("avc1.42001E", [
+            ("family", "avc"),
+            ("profile_idc", 66),
+            ("profile_name", "Baseline"),
+            ("level_idc", 0x1E),
+            ("level_name", "3"),
+            ("verdict", "VALID"),
+        ]),
+        # AVC-D3: Constrained Baseline L3.0 (set1=1)
+        ("avc1.42C01E", [
+            ("family", "avc"),
+            ("profile_idc", 66),
+            ("constrained_profile", "Constrained Baseline"),
+            ("verdict", "VALID"),
+        ]),
+        # AVC-D4: Main L3.1
+        ("avc1.4D401F", [
+            ("family", "avc"),
+            ("profile_idc", 77),
+            ("profile_name", "Main"),
+            ("level_name", "3.1"),
+            ("verdict", "VALID"),
+        ]),
+        # AVC-D5: High 10 L5.1
+        ("avc1.6E0033", [
+            ("family", "avc"),
+            ("profile_idc", 110),
+            ("profile_name", "High 10"),
+            ("level_name", "5.1"),
+            ("verdict", "VALID"),
+        ]),
+        # AVC-D6: High 4:2:2 L4.0
+        ("avc1.7A0028", [
+            ("family", "avc"),
+            ("profile_idc", 122),
+            ("profile_name", "High 4:2:2"),
+            ("verdict", "VALID"),
+        ]),
+        # AVC-D7: avc3 entry
+        ("avc3.640028", [
+            ("family", "avc"),
+            ("entry", "avc3"),
+            ("profile_idc", 100),
+            ("verdict", "VALID"),
+        ]),
+        # AVC-D8: Constrained High (set4=1 only → 0x08)
+        ("avc1.640828", [
+            ("family", "avc"),
+            ("profile_idc", 100),
+            ("constrained_profile", "Constrained High"),
+            ("verdict", "VALID"),
+        ]),
+        # AVC-D9: Progressive High (set4+set5=1 → 0x0C)
+        ("avc1.640C28", [
+            ("family", "avc"),
+            ("profile_idc", 100),
+            ("constrained_profile", "Progressive High"),
+            ("verdict", "VALID"),
+        ]),
+        # AVC-D10: Bad hex triplet (5 chars) → INVALID
+        ("avc1.64002", [
+            ("family", "avc"),
+            ("verdict", "INVALID"),
+        ]),
+        # AVC-D11: Unknown profile → INVALID
+        ("avc1.FF0028", [
+            ("family", "avc"),
+            ("verdict", "INVALID"),
+        ]),
+        # AVC-D12: Reserved bits set → INVALID
+        ("avc1.640129", [
+            ("family", "avc"),
+            ("verdict", "INVALID"),
+        ]),
+        # AVC-D13: Wrong field count (3 dots) → INVALID
+        ("avc1.64.00.28", [
+            ("family", "avc"),
+            ("verdict", "INVALID"),
+        ]),
+
         # ── VP8 ──────────────────────────────────────────────────
 
         # VP8-D1: Bare tag → VALID
@@ -968,6 +1093,20 @@ def decode_self_test() -> bool:
         # VP9-R4: 4K 10-bit 4:2:2 (Profile 3)
         (Content(3840, 2160, 30.0, 10, Chroma.YUV422, Transfer.PQ, Gamut.BT2020),
          "vp09", "VP9 P3 4K 4:2:2 HDR"),
+
+        # ── AVC Roundtrip Tests ────────────────────────────────
+        # AVC-R1: 1080p24 High L4.0
+        (Content(1920, 1080, 23.976, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "avc1", "AVC High 1080p24 → L4.0"),
+        # AVC-R2: 720p30 High L3.1
+        (Content(1280, 720, 30.0, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "avc1", "AVC High 720p30 → L3.1"),
+        # AVC-R3: 4K30 High 10 L5.1
+        (Content(3840, 2160, 30.0, 10, Chroma.YUV420, Transfer.PQ, Gamut.BT2020),
+         "avc1", "AVC High 10 4K30 → L5.1"),
+        # AVC-R4: 1080p60 High L4.2
+        (Content(1920, 1080, 59.94, 8, Chroma.YUV420, Transfer.SDR, Gamut.BT709),
+         "avc1", "AVC High 1080p60 → L4.2"),
     ]
 
     for content, codec, desc in roundtrip_tests:
@@ -1065,6 +1204,23 @@ def decode_self_test() -> bool:
                         f"vp9_depth: {r_depth}→{decoded['bit_depth']}")
 
                 # Verify decoded verdict is VALID
+                if decoded.get("verdict") != "VALID":
+                    issues.append(f"verdict: {decoded.get('verdict')}")
+
+            elif resolved.family == "avc":
+                # AVC codec string: avc1.PPCCLL (hex triplet)
+                hex_triplet = resolved.codec_string.split(".")[1]
+                r_profile = int(hex_triplet[0:2], 16)
+                r_level = int(hex_triplet[4:6], 16)
+
+                if decoded["profile_idc"] != r_profile:
+                    issues.append(
+                        f"avc_profile: {r_profile}→{decoded['profile_idc']}")
+
+                if decoded["level_idc"] != r_level:
+                    issues.append(
+                        f"avc_level: {r_level}→{decoded['level_idc']}")
+
                 if decoded.get("verdict") != "VALID":
                     issues.append(f"verdict: {decoded.get('verdict')}")
 

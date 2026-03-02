@@ -11,6 +11,8 @@ CODEC_ENTRIES = {
     "hev1": {"family": "hevc", "base_codec": "HEVC", "is_dv": False},
     "av01": {"family": "av1",  "base_codec": "AV1",  "is_dv": False},
     "vp09": {"family": "vp9",  "base_codec": "VP9",  "is_dv": False},
+    "avc1": {"family": "avc",  "base_codec": "AVC",  "is_dv": False},
+    "avc3": {"family": "avc",  "base_codec": "AVC",  "is_dv": False},
     "dvhe": {"family": "dv",   "base_codec": "HEVC", "is_dv": True},
     "dvh1": {"family": "dv",   "base_codec": "HEVC", "is_dv": True},
     "dvav": {"family": "dv",   "base_codec": "AVC",  "is_dv": True},
@@ -31,8 +33,9 @@ ENTRY_ALIASES = {
     "dv":     ["dvhe", "dvh1", "dvc1", "dvhp"],
     "dv-avc": ["dvav", "dva1"],
     "dv-av1": ["dav1"],
+    "avc":    ["avc1", "avc3"],
     "vp8":    ["vp8"],
-    "all":    ["hvc1", "hev1", "av01", "vp09", "dvhe", "dvh1"],
+    "all":    ["hvc1", "hev1", "av01", "vp09", "avc1", "dvhe", "dvh1"],
 }
 
 ALL_ENTRIES = set(CODEC_ENTRIES.keys())
